@@ -5,6 +5,7 @@ import OutputSentence from "./components/OutputSentence";
 import Encoder from "./components/Encoder";
 import Decoder from "./components/Decoder";
 import SentimentHead from "./components/SentimentHead";
+import CellInternalModal from "./components/CellInternalModal";
 import { useStore } from "./state/store";
 
 export default function App() {
@@ -64,6 +65,8 @@ export default function App() {
           </section>
         )}
       </main>
+      {/* Modal global de celda interna */}
+      <CellInternalModal />
     </div>
   );
 }

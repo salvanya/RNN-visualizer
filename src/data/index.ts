@@ -10,6 +10,6 @@ export function getEncoderTimesteps(
   const key = modo === 'sentiment'
     ? `${arquitectura}_sentiment`
     : `${arquitectura}_translation_noattn`;
-  const scenarios = appData.scenarios as Record<string, { encoder: { timesteps: EncoderTimestep[] } }>;
+  const scenarios = appData.scenarios as unknown as Record<string, { encoder: { timesteps: EncoderTimestep[] } }>;
   return scenarios[key].encoder.timesteps;
 }

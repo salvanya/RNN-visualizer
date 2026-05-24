@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Microscope } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../state/store';
 import { encoderTokenColor } from '../utils/colors';
@@ -21,7 +21,7 @@ const sup = (l: 1 | 2) => (l === 1 ? '⁽¹⁾' : '⁽²⁾');
 
 export default function Cell({ layer, t, layerState, token, isActive, tooltipSide }: Props) {
   const [hovered, setHovered] = useState(false);
-  const { fijarTooltip, liberarTooltip, tooltipsFijos } = useStore();
+  const { fijarTooltip, liberarTooltip, tooltipsFijos, abrirModalCelda } = useStore();
   const id = `enc-l${layer}-t${t}`;
   const fixed = tooltipsFijos.includes(id);
   const showTooltip = hovered || fixed;
@@ -100,9 +100,20 @@ export default function Cell({ layer, t, layerState, token, isActive, tooltipSid
               </div>
             </div>
 
-            {!fixed && (
-              <div className="text-gray-700 text-[9px] mt-2 text-center">click para fijar</div>
-            )}
+            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-700/50">
+              {!fixed && (
+                <span className="text-gray-700 text-[9px]">click para fijar</span>
+              )}
+              <button
+                className="flex items-center gap-1 text-[9px] text-blue-500 hover:text-blue-300 transition-colors ml-auto"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  abrirModalCelda({ layer, t, lado: 'enc' });
+                }}
+              >
+                <Microscope size={10} /> Ver interior
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
