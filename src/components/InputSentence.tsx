@@ -26,7 +26,7 @@ export default function InputSentence() {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">
+      <div className="text-[10px] text-gray-400 uppercase tracking-[0.12em] font-semibold">
         Entrada — español
       </div>
 

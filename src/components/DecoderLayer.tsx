@@ -37,7 +37,7 @@ function LstmArrow() {
 export default function DecoderLayer({ layerNum, decTimesteps, visibleCount, activeT }: Props) {
   const { arquitectura } = useStore();
   const isLstm = arquitectura === 'LSTM';
-  const tooltipSide = layerNum === 2 ? 'above' : 'below';
+  const tooltipSide = layerNum === 1 ? 'above' : 'below';
 
   return (
     <div className="flex items-center">
@@ -47,7 +47,7 @@ export default function DecoderLayer({ layerNum, decTimesteps, visibleCount, act
 
       <div className="flex items-center">
         {visibleCount === 0 ? (
-          <span className="text-gray-700 text-xs font-mono italic">
+          <span className="text-gray-500 text-xs font-mono italic">
             {layerNum === 1
               ? (isLstm ? 'h₀ = W_c·h_T⁽²⁾, C₀ = 0' : 'h₀ = W_c·h_T⁽²⁾')
               : (isLstm ? 'h₀ = C₀ = [0…0]' : 'h₀ = [0…0]')

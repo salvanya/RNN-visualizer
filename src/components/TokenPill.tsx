@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../state/store';
 import { encoderTokenColor } from '../utils/colors';
 import { fmt } from '../utils/math-format';
 import { durationSec } from '../utils/timing';
+
+const TOOLTIP_WIDTH = 200;
+const VIEWPORT_MARGIN = 8;
 
 interface Props {
   token: string;
@@ -15,15 +19,40 @@ interface Props {
 
 export default function TokenPill({ token, embedding, isActive, isProcessed }: Props) {
   const [hovered, setHovered] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const pillRef = useRef<HTMLDivElement>(null);
   const { fijarTooltip, liberarTooltip, tooltipsFijos, velocidad } = useStore();
   const id = `token-${token}`;
   const fixed = tooltipsFijos.includes(id);
   const showTooltip = hovered || fixed;
   const color = encoderTokenColor(token);
 
+  useLayoutEffect(() => {
+    if (!showTooltip || !pillRef.current) return;
+    const recalc = () => {
+      const r = pillRef.current!.getBoundingClientRect();
+      const half = TOOLTIP_WIDTH / 2;
+      const idealLeft = r.left + r.width / 2;
+      const minLeft = VIEWPORT_MARGIN + half;
+      const maxLeft = window.innerWidth - VIEWPORT_MARGIN - half;
+      setPos({
+        top: r.bottom + 8,
+        left: Math.max(minLeft, Math.min(maxLeft, idealLeft)),
+      });
+    };
+    recalc();
+    window.addEventListener('scroll', recalc, true);
+    window.addEventListener('resize', recalc);
+    return () => {
+      window.removeEventListener('scroll', recalc, true);
+      window.removeEventListener('resize', recalc);
+    };
+  }, [showTooltip]);
+
   return (
-    <div className="relative flex flex-col items-center">
+    <div className="flex flex-col items-center">
       <motion.div
+        ref={pillRef}
         animate={{
           opacity: isProcessed && !isActive ? 0.55 : 1,
           scale: isActive ? 1.12 : 1,
@@ -43,16 +72,24 @@ export default function TokenPill({ token, embedding, isActive, isProcessed }: P
         {token}
       </motion.div>
 
-      <AnimatePresence>
-        {showTooltip && (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: durationSec('cambioTooltip', velocidad) }}
-            className="absolute top-full mt-2 z-50 bg-gray-900 border rounded-lg p-3 shadow-2xl min-w-[180px]"
-            style={{ borderColor: `${color}55` }}
-          >
+      {createPortal(
+        <AnimatePresence>
+          {showTooltip && pos && (
+            <motion.div
+              key="tt"
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: durationSec('cambioTooltip', velocidad) }}
+              className="fixed z-[100] bg-gray-900 border rounded-lg p-3 shadow-2xl pointer-events-auto"
+              style={{
+                top: pos.top,
+                left: pos.left,
+                width: TOOLTIP_WIDTH,
+                transform: 'translate(-50%, 0)',
+                borderColor: `${color}55`,
+              }}
+            >
             <div className="flex items-center justify-between mb-2">
               <span className="font-mono text-[11px] font-semibold" style={{ color }}>
                 embed("{token}")
@@ -90,9 +127,11 @@ export default function TokenPill({ token, embedding, isActive, isProcessed }: P
             {!fixed && (
               <div className="text-gray-700 text-[9px] mt-2 text-center">click para fijar</div>
             )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }

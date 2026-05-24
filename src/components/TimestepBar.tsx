@@ -129,9 +129,9 @@ export default function TimestepBar() {
             if (step.type === "dec") return "bg-orange-500 text-white";
             return "bg-gray-400 text-white";
           }
-          if (step.type === "enc") return "bg-blue-900/70 text-blue-300 hover:bg-blue-800/70";
-          if (step.type === "dec") return "bg-orange-900/70 text-orange-300 hover:bg-orange-800/70";
-          return "bg-gray-700 text-gray-400 hover:bg-gray-600";
+          if (step.type === "enc") return "bg-blue-900/60 text-blue-200 hover:bg-blue-800/80";
+          if (step.type === "dec") return "bg-orange-900/60 text-orange-200 hover:bg-orange-800/80";
+          return "bg-gray-700/80 text-gray-200 hover:bg-gray-600";
         })();
 
         const ringClass = (() => {

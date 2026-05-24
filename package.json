@@ -9,6 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.2.8",
     "framer-motion": "^12.10.0",
     "katex": "^0.16.21",
     "lucide-react": "^0.511.0",

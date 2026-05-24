@@ -39,7 +39,7 @@ export default function Layer({ layerNum, encTimesteps, visibleCount, activeT }:
   const { arquitectura } = useStore();
   const isLstm = arquitectura === 'LSTM';
   const tokens = appData.config.encoderTokens;
-  const tooltipSide = layerNum === 2 ? 'above' : 'below';
+  const tooltipSide = layerNum === 1 ? 'above' : 'below';
 
   return (
     <div className="flex items-center">
@@ -51,7 +51,7 @@ export default function Layer({ layerNum, encTimesteps, visibleCount, activeT }:
       {/* Cells */}
       <div className="flex items-center">
         {visibleCount === 0 ? (
-          <span className="text-gray-700 text-xs font-mono italic">
+          <span className="text-gray-500 text-xs font-mono italic">
             {isLstm ? 'h₀ = C₀ = [0…0]' : 'h₀ = [0…0]'}
           </span>
         ) : (

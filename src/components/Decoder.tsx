@@ -4,6 +4,7 @@ import DecoderLayer from './DecoderLayer';
 import ContextProjection from './ContextProjection';
 import SoftmaxHead from './SoftmaxHead';
 import AttentionLayer from './AttentionLayer';
+import { SectionHeader, WaitingMessage } from './Section';
 
 export default function Decoder() {
   const { timestep, arquitectura, atencion } = useStore();
@@ -13,20 +14,20 @@ export default function Decoder() {
   const activeT = timestep >= 8 && timestep <= 13 ? timestep - 7 : null;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-5">
       {/* W_c proyección: h_T^(2) → h_0^(dec,1) */}
       <ContextProjection />
 
       {/* Capas del decoder desdobladas en el tiempo */}
-      <div className="flex flex-col gap-1 overflow-x-auto pb-2">
+      <div className="flex flex-col gap-2 overflow-x-auto py-5 px-3">
         <DecoderLayer
-          layerNum={2}
+          layerNum={1}
           decTimesteps={decTimesteps}
           visibleCount={visibleCount}
           activeT={activeT}
         />
 
-        {/* Flechas verticales entre capas */}
+        {/* Flechas verticales entre capas (datos fluyen hacia abajo) */}
         <div className="flex items-center">
           <div className="w-16 shrink-0" />
           <div className="flex items-center gap-px">
@@ -37,32 +38,30 @@ export default function Decoder() {
                   className="flex justify-center"
                   style={{ width: i === 0 ? '96px' : '116px', paddingLeft: i === 0 ? 0 : '20px' }}
                 >
-                  <div className="text-gray-700 text-[10px] font-mono select-none">↑</div>
+                  <div className="text-orange-500/70 text-xs font-mono select-none leading-none">↓</div>
                 </div>
               ))}
           </div>
         </div>
 
         <DecoderLayer
-          layerNum={1}
+          layerNum={2}
           decTimesteps={decTimesteps}
           visibleCount={visibleCount}
           activeT={activeT}
         />
 
         {timestep === 7 && visibleCount === 0 && (
-          <div className="ml-16 text-gray-600 text-xs italic font-mono mt-1">
+          <WaitingMessage className="ml-16 mt-1">
             Presiona → para comenzar el decoder
-          </div>
+          </WaitingMessage>
         )}
       </div>
 
       {/* Mecanismo de atención (solo en modo atención) */}
       {atencion && visibleCount > 0 && (
         <div>
-          <h3 className="text-xs text-amber-400/60 font-mono uppercase tracking-wider mb-2">
-            Mecanismo de Atención
-          </h3>
+          <SectionHeader title="Mecanismo de atención" color="#fbbf24" subtitle="Luong general" size="sm" />
           <AttentionLayer />
         </div>
       )}
@@ -70,9 +69,7 @@ export default function Decoder() {
       {/* Proyección sobre vocabulario */}
       {visibleCount > 0 && (
         <div>
-          <h3 className="text-xs text-orange-400/60 font-mono uppercase tracking-wider mb-2">
-            Proyección sobre vocabulario
-          </h3>
+          <SectionHeader title="Proyección sobre vocabulario" color="#fb923c" subtitle="softmax sobre 12 tokens" size="sm" />
           <SoftmaxHead />
         </div>
       )}

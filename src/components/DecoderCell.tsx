@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Microscope } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../state/store';
@@ -6,6 +7,9 @@ import { decoderTokenColor } from '../utils/colors';
 import { fmt } from '../utils/math-format';
 import { durationSec } from '../utils/timing';
 import type { EncoderLayerState, EncoderLayerStateLstm } from '../data/types';
+
+const TOOLTIP_WIDTH = 230;
+const VIEWPORT_MARGIN = 8;
 
 interface Props {
   layer: 1 | 2;
@@ -24,6 +28,8 @@ export default function DecoderCell({
   layer, t, layerState, inputToken, outputToken, isActive, tooltipSide, showCellState = false
 }: Props) {
   const [hovered, setHovered] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const cellRef = useRef<HTMLDivElement>(null);
   const { fijarTooltip, liberarTooltip, tooltipsFijos, abrirModalCelda, velocidad } = useStore();
   const id = `dec-l${layer}-t${t}`;
   const fixed = tooltipsFijos.includes(id);
@@ -35,12 +41,32 @@ export default function DecoderCell({
   const label = `h${t}${sup(layer)}`;
   const prevLabel = t === 1 ? `h₀${sup(layer)}` : `h${t - 1}${sup(layer)}`;
 
-  const tooltipPositionClass =
-    tooltipSide === 'above' ? 'bottom-full mb-2' : 'top-full mt-2';
+  useLayoutEffect(() => {
+    if (!showTooltip || !cellRef.current) return;
+    const recalc = () => {
+      const r = cellRef.current!.getBoundingClientRect();
+      const half = TOOLTIP_WIDTH / 2;
+      const ideal = r.left + r.width / 2;
+      const minL = VIEWPORT_MARGIN + half;
+      const maxL = window.innerWidth - VIEWPORT_MARGIN - half;
+      setPos({
+        top: tooltipSide === 'above' ? r.top - 8 : r.bottom + 8,
+        left: Math.max(minL, Math.min(maxL, ideal)),
+      });
+    };
+    recalc();
+    window.addEventListener('scroll', recalc, true);
+    window.addEventListener('resize', recalc);
+    return () => {
+      window.removeEventListener('scroll', recalc, true);
+      window.removeEventListener('resize', recalc);
+    };
+  }, [showTooltip, tooltipSide]);
 
   return (
-    <div className="relative flex flex-col items-center">
+    <div className="flex flex-col items-center">
       <motion.div
+        ref={cellRef}
         initial={{ opacity: 0, scale: 0.7 }}
         animate={{ opacity: 1, scale: isActive ? 1.05 : 1 }}
         transition={{ duration: durationSec('desdoblamientoTimestep', velocidad), ease: 'easeOut' }}
@@ -81,16 +107,26 @@ export default function DecoderCell({
         )}
       </motion.div>
 
-      <AnimatePresence>
-        {showTooltip && (
-          <motion.div
-            initial={{ opacity: 0, y: tooltipSide === 'above' ? 4 : -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: tooltipSide === 'above' ? 4 : -4 }}
-            transition={{ duration: durationSec('cambioTooltip', velocidad) }}
-            className={`absolute ${tooltipPositionClass} z-50 bg-gray-900 border rounded-xl p-3 shadow-2xl min-w-[210px]`}
-            style={{ borderColor: `${color}44` }}
-          >
+      {createPortal(
+        <AnimatePresence>
+          {showTooltip && pos && (
+            <motion.div
+              key="tt"
+              initial={{ opacity: 0, y: tooltipSide === 'above' ? 4 : -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: tooltipSide === 'above' ? 4 : -4 }}
+              transition={{ duration: durationSec('cambioTooltip', velocidad) }}
+              className="fixed z-[100] bg-gray-900 border rounded-xl p-3 shadow-2xl pointer-events-auto"
+              style={{
+                top: pos.top,
+                left: pos.left,
+                width: TOOLTIP_WIDTH,
+                transform: tooltipSide === 'above'
+                  ? 'translate(-50%, -100%)'
+                  : 'translate(-50%, 0)',
+                borderColor: `${color}44`,
+              }}
+            >
             <div className="flex items-center justify-between mb-2.5">
               <span className="font-mono text-[11px] font-semibold" style={{ color }}>
                 {label} (dec) — "{outputToken}"
@@ -140,9 +176,11 @@ export default function DecoderCell({
                 <Microscope size={10} /> Ver interior
               </button>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }

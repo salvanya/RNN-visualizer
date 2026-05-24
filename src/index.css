@@ -2,10 +2,17 @@
 
 @layer base {
   html {
-    font-family: Inter, system-ui, sans-serif;
+    font-family: "Inter", system-ui, sans-serif;
+    font-feature-settings: "cv11", "ss01", "ss03";
   }
 
-  code, .mono {
-    font-family: "JetBrains Mono", "Fira Code", monospace;
+  body {
+    background-color: #09090b;
+    color: #e5e7eb;
+  }
+
+  code, .mono, .font-mono {
+    font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+    font-feature-settings: "ss02", "cv02";
   }
 }

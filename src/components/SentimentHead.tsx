@@ -3,6 +3,7 @@ import { useStore } from "../state/store";
 import { appData } from "../data/index";
 import VectorDisplay from "./VectorDisplay";
 import MatrixDisplay from "./MatrixDisplay";
+import { WaitingMessage } from "./Section";
 import { fmtPct, fmt } from "../utils/math-format";
 import { durationSec } from "../utils/timing";
 
@@ -28,11 +29,12 @@ export default function SentimentHead() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: durationSec('cambioTooltip', velocidad) }}
-          className="text-gray-600 text-xs font-mono italic px-1"
         >
-          {timestep === 0
-            ? "Esperando inicio del encoder…"
-            : `Procesando encoder (t=${timestep}/7)…`}
+          <WaitingMessage className="px-1">
+            {timestep === 0
+              ? "Esperando inicio del encoder…"
+              : `Procesando encoder (t=${timestep}/7)…`}
+          </WaitingMessage>
         </motion.div>
       ) : (
         <motion.div
