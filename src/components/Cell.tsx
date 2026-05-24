@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../state/store';
 import { encoderTokenColor } from '../utils/colors';
 import { fmt } from '../utils/math-format';
-import type { EncoderLayerState } from '../data/types';
+import type { EncoderLayerState, EncoderLayerStateLstm } from '../data/types';
 
 interface Props {
   layer: 1 | 2;
@@ -12,14 +12,13 @@ interface Props {
   layerState: EncoderLayerState;
   token: string;
   isActive: boolean;
-  /** Where the tooltip appears relative to the cell */
   tooltipSide: 'above' | 'below';
+  showCellState?: boolean;
 }
 
-// Superscript notation for layer number
 const sup = (l: 1 | 2) => (l === 1 ? '⁽¹⁾' : '⁽²⁾');
 
-export default function Cell({ layer, t, layerState, token, isActive, tooltipSide }: Props) {
+export default function Cell({ layer, t, layerState, token, isActive, tooltipSide, showCellState = false }: Props) {
   const [hovered, setHovered] = useState(false);
   const { fijarTooltip, liberarTooltip, tooltipsFijos, abrirModalCelda } = useStore();
   const id = `enc-l${layer}-t${t}`;
@@ -28,6 +27,7 @@ export default function Cell({ layer, t, layerState, token, isActive, tooltipSid
   const color = encoderTokenColor(token);
 
   const { h_prev, x_t, h_t } = layerState;
+  const lstmState = showCellState ? (layerState as EncoderLayerStateLstm) : null;
   const label = `h${t}${sup(layer)}`;
   const prevLabel = `h${t - 1}${sup(layer)}`;
 
@@ -65,6 +65,21 @@ export default function Cell({ layer, t, layerState, token, isActive, tooltipSid
             </span>
           ))}
         </div>
+        {/* c_t values — only for LSTM */}
+        {lstmState && (
+          <>
+            <div className="font-mono text-[8px] font-semibold text-yellow-500/70 mt-0.5">
+              C{t}{sup(layer)}
+            </div>
+            <div className="flex flex-wrap gap-x-1.5 gap-y-0.5">
+              {lstmState.c_t.map((v, i) => (
+                <span key={i} className="font-mono text-[9px] text-yellow-400/60">
+                  {v.toFixed(2)}
+                </span>
+              ))}
+            </div>
+          </>
+        )}
       </motion.div>
 
       {/* Tooltip */}
@@ -95,9 +110,15 @@ export default function Cell({ layer, t, layerState, token, isActive, tooltipSid
             <div className="flex flex-col gap-2">
               <TooltipRow label={`x_${t} (embedding)`} values={x_t} color="#94a3b8" />
               <TooltipRow label={prevLabel} values={h_prev} color={`${color}88`} />
+              {lstmState && (
+                <TooltipRow label={`C_${t - 1}${sup(layer)}`} values={lstmState.c_prev} color="#ca8a04" />
+              )}
               <div className="border-t border-gray-700 pt-2">
                 <TooltipRow label={label} values={h_t} color={color} highlight />
               </div>
+              {lstmState && (
+                <TooltipRow label={`C_${t}${sup(layer)}`} values={lstmState.c_t} color="#facc15" highlight />
+              )}
             </div>
 
             <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-700/50">
