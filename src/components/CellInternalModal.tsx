@@ -4,8 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { InlineMath } from 'react-katex';
 import 'katex/dist/katex.min.css';
 import { useStore } from '../state/store';
-import { appData } from '../data/index';
-import { encoderTokenColor } from '../utils/colors';
+import { appData, getTranslationScenario } from '../data/index';
+import { encoderTokenColor, decoderTokenColor } from '../utils/colors';
 import { fmt } from '../utils/math-format';
 import MatrixDisplay from './MatrixDisplay';
 import type {
@@ -14,6 +14,7 @@ import type {
   EncoderLayerStateGru,
   EncoderLayerStateLstm,
   EncoderTimestep,
+  TranslationScenario,
 } from '../data/types';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -280,28 +281,48 @@ export default function CellInternalModal() {
 
   if (!modalCeldaAbierta) return null;
 
-  const { layer, t } = modalCeldaAbierta;
+  const { layer, t, lado } = modalCeldaAbierta;
+  const isDecoder = lado === 'dec';
 
-  // Resolve scenario
-  const scenarioKey = modo === 'sentiment'
-    ? `${arquitectura}_sentiment`
-    : `${arquitectura}_translation_${atencion ? 'attn' : 'noattn'}`;
-  const scenarios = appData.scenarios as unknown as Record<string, {
-    encoder: { weights: { layer1: GruLayerWeights | LstmLayerWeights; layer2: GruLayerWeights | LstmLayerWeights }; timesteps: EncoderTimestep[] }
-  }>;
-  const scenario = scenarios[scenarioKey];
-  const tsData = scenario.encoder.timesteps[t - 1];
-  const layerState = layer === 1 ? tsData.layer1 : tsData.layer2;
-  const weights = scenario.encoder.weights[`layer${layer}` as 'layer1' | 'layer2'];
-  const token = tsData.input;
-  const color = encoderTokenColor(token);
+  // Resolve scenario and extract layer state + weights
+  let layerState: EncoderLayerStateGru | EncoderLayerStateLstm;
+  let weights: GruLayerWeights | LstmLayerWeights;
+  let token: string;
+  let color: string;
+  let layerDim: string;
+  let inputDim: string;
+
+  if (!isDecoder) {
+    const scenarioKey = modo === 'sentiment'
+      ? `${arquitectura}_sentiment`
+      : `${arquitectura}_translation_${atencion ? 'attn' : 'noattn'}`;
+    const scenarios = appData.scenarios as unknown as Record<string, {
+      encoder: { weights: { layer1: GruLayerWeights | LstmLayerWeights; layer2: GruLayerWeights | LstmLayerWeights }; timesteps: EncoderTimestep[] }
+    }>;
+    const scenario = scenarios[scenarioKey];
+    const tsData = scenario.encoder.timesteps[t - 1];
+    layerState = layer === 1 ? tsData.layer1 : tsData.layer2;
+    weights = scenario.encoder.weights[`layer${layer}` as 'layer1' | 'layer2'];
+    token = tsData.input;
+    color = encoderTokenColor(token);
+    layerDim = layer === 1 ? 'm' : 'l';
+    inputDim = layer === 1 ? 'd' : 'm';
+  } else {
+    const translationScenario = getTranslationScenario(arquitectura, atencion);
+    const tsData = translationScenario.decoder.timesteps[t - 1];
+    layerState = (layer === 1 ? tsData.layer1 : tsData.layer2) as EncoderLayerStateGru | EncoderLayerStateLstm;
+    weights = (translationScenario as unknown as TranslationScenario & {
+      decoder: { weights: { layer1: GruLayerWeights | LstmLayerWeights; layer2: GruLayerWeights | LstmLayerWeights } }
+    }).decoder.weights[`layer${layer}` as 'layer1' | 'layer2'];
+    token = tsData.input_token;
+    color = decoderTokenColor(tsData.softmax.argmax);
+    layerDim = layer === 1 ? 'p' : 'q';
+    inputDim = layer === 1 ? 'd' : 'p';
+  }
 
   const isLstm = 'c_prev' in layerState;
   const steps = isGru ? GRU_STEPS : LSTM_STEPS;
   const currentStep = steps[step];
-
-  const layerDim = layer === 1 ? 'm' : 'l';
-  const inputDim = layer === 1 ? 'd' : 'm';
 
   return (
     <AnimatePresence>
@@ -331,7 +352,7 @@ export default function CellInternalModal() {
                 style={{ backgroundColor: color, boxShadow: `0 0 8px ${color}` }}
               />
               <span className="font-mono text-sm font-semibold" style={{ color }}>
-                Celda {arquitectura} — Capa {layer}, t={t} ("{token}")
+                Celda {arquitectura} — {isDecoder ? 'Dec' : 'Enc'} Capa {layer}, t={t} ("{token}")
               </span>
               <span className="text-gray-600 text-xs">
                 dim entrada={inputDim}, dim capa={layerDim}
@@ -353,7 +374,7 @@ export default function CellInternalModal() {
                 Entradas
               </div>
               <VecRow
-                label={`x_${t} (embedding, dim ${inputDim})`}
+                label={isDecoder ? `emb("${token}") (dim ${inputDim})` : `x_${t} (embedding, dim ${inputDim})`}
                 values={layerState.x_t}
                 color="#94a3b8"
               />
