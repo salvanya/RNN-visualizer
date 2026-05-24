@@ -3,6 +3,7 @@ import { getDecoderTimesteps } from '../data/index';
 import DecoderLayer from './DecoderLayer';
 import ContextProjection from './ContextProjection';
 import SoftmaxHead from './SoftmaxHead';
+import AttentionLayer from './AttentionLayer';
 
 export default function Decoder() {
   const { timestep, arquitectura, atencion } = useStore();
@@ -55,6 +56,16 @@ export default function Decoder() {
           </div>
         )}
       </div>
+
+      {/* Mecanismo de atención (solo en modo atención) */}
+      {atencion && visibleCount > 0 && (
+        <div>
+          <h3 className="text-xs text-amber-400/60 font-mono uppercase tracking-wider mb-2">
+            Mecanismo de Atención
+          </h3>
+          <AttentionLayer />
+        </div>
+      )}
 
       {/* Proyección sobre vocabulario */}
       {visibleCount > 0 && (

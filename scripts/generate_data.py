@@ -177,18 +177,22 @@ def lstm_step(x, h_prev, c_prev, W):
 # ---------------------------------------------------------------------------
 
 def make_gru_weights_enc():
-    T = len(ENCODER_TOKENS)  # noqa: F841 — no usado aquí, solo para contexto
     # Capa 1: input dim D=4, hidden dim M=3
     W1 = {
         "W_ih_r": make_weight(M, D), "W_hh_r": make_weight(M, M), "b_r": make_bias(M),
         "W_ih_z": make_weight(M, D), "W_hh_z": make_weight(M, M), "b_z": make_bias(M, 0.1),
         "W_ih_n": make_weight(M, D), "W_hh_n": make_weight(M, M), "b_n": make_bias(M),
     }
-    # Capa 2: input dim M=3, hidden dim L=4
+    # Capa 2: input dim M=3, hidden dim L=4.
+    # W_ih_n con scale grande (1.5) y b_z negativo (-1.5) para que la puerta
+    # de actualización esté abierta (z≈0.18) y cada token desplace fuertemente
+    # el estado: esto garantiza que h_enc^(2) sea específico de cada token y
+    # los estados sean suficientemente distintos entre sí para que la atención
+    # sea interpretable. W_hh_n pequeño (0.1) para no difuminar esa info.
     W2 = {
         "W_ih_r": make_weight(L, M), "W_hh_r": make_weight(L, L), "b_r": make_bias(L),
-        "W_ih_z": make_weight(L, M), "W_hh_z": make_weight(L, L), "b_z": make_bias(L, 0.1),
-        "W_ih_n": make_weight(L, M), "W_hh_n": make_weight(L, L), "b_n": make_bias(L),
+        "W_ih_z": make_weight(L, M), "W_hh_z": make_weight(L, L), "b_z": make_bias(L, -1.5),
+        "W_ih_n": make_weight(L, M, scale=1.5), "W_hh_n": make_weight(L, L, scale=0.1), "b_n": make_bias(L),
     }
     return W1, W2
 
@@ -568,39 +572,83 @@ def attention_scores(h_dec_q, enc_h2_all, W_a):
         scores.append(score)
     return np.array(scores)
 
-def make_attention_weights():
-    # W_a: (Q x L) = (3 x 4)
-    # W_combine: (Q x (Q+L)) = (3 x 7)
-    W_a = make_weight(Q, L)
-    W_combine = make_weight(Q, Q + L)
-    return W_a, W_combine
+def make_interpretable_W_a(h_dec_states, enc_h2_all, target_pairs):
+    """
+    Encuentra W_a (Q x L) via mínimos cuadrados tal que la matriz de scores
+    S[t,i] = h_dec_t^T W_a h_enc_i tenga valores altos en los pares objetivo.
 
-def tune_attention_W_a(enc_h2_all, W_a):
+    Sistema lineal: (E[i] ⊗ D[t]) · vec_F(W_a) = S_target[t,i]
+    Forma: (T*N, L*Q) → lstsq mínima norma.
+
+    Post-lstsq: escala W_a para que el pico mínimo de los pares logrados
+    dé α_max ≈ 0.55 (softmax peak interpretable, no degenerado a 1.000).
+    Si un par no logra el ordenamiento correcto se descarta y se continúa.
+
+    target_pairs: [(dec_step_0idx, enc_token_0idx), ...]
     """
-    Ajusta W_a para que los patrones de atención sean interpretables:
-      t=1 (I)       → atiende token 1 (Me)
-      t=2 (loved)   → atiende token 2 (encantó) — fuerte
-      t=3 (this)    → atiende token 5 (de) / token 6 (este)
-      t=4 (place's) → atiende token 7 (lugar)
-      t=5 (pizza)   → atiende token 4 (pizza) — fuerte
-      t=6 (<END>)   → atiende token 7 (lugar) difuso
-    Estrategia: reforzar W_a para que la proyección de cada h_enc_i
-    apunte en la dirección correcta.
-    """
-    W = W_a.copy()
-    # Para cada par (encoder_token_idx, interpretable_peak) reforzamos
-    pairs = [
-        (0, "Me"), (1, "encantó"), (4, "de"), (3, "pizza"), (6, "lugar")
-    ]
-    for enc_idx, _ in pairs:
-        h_enc = enc_h2_all[enc_idx]
-        h_enc_norm = h_enc / (np.linalg.norm(h_enc) + 1e-8)
-        # Añadimos una componente que hará que h_dec @ W_a @ h_enc sea grande
-        # Usamos el primer vector canónico de h_dec como proxy
-        W += np.outer(np.ones(Q) / Q, h_enc_norm) * 0.3
-    return r2(W)
+    T = len(h_dec_states)
+    N = len(enc_h2_all)
+    D = np.array(h_dec_states)   # (T, Q)
+    E = np.array(enc_h2_all)     # (N, L)
+
+    # Boost unitario para encontrar la dirección correcta
+    S_target = np.full((T, N), -1.0 / N)
+    for dec_idx, enc_idx in target_pairs:
+        S_target[dec_idx, enc_idx] = 1.0
+
+    A = np.zeros((T * N, L * Q))
+    b = S_target.flatten()
+    for t in range(T):
+        for i in range(N):
+            A[t * N + i, :] = np.kron(E[i, :], D[t, :])
+
+    w, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
+    W_a_base = w.reshape((L, Q)).T   # (Q, L)
+
+    # Verificar qué pares logran el ordenamiento correcto
+    achieved = []
+    for dec_idx, enc_idx in target_pairs:
+        h_d = D[dec_idx]
+        scores = np.array([float(h_d @ W_a_base @ E[i]) for i in range(N)])
+        if int(np.argmax(scores)) == enc_idx:
+            # Calcular margen: winner_score - max(otros scores)
+            sorted_s = np.sort(scores)[::-1]
+            margin = sorted_s[0] - sorted_s[1]
+            achieved.append((dec_idx, enc_idx, margin))
+
+    if not achieved:
+        # Ningún par logrado — devolver W_a base sin escalar (al menos no es uniforme)
+        return r2(W_a_base * 5)
+
+    # Escalar para que el margen mínimo dé α_max ≈ 0.55:
+    # softmax peak ≈ 0.55 requiere score_diff ≈ ln(0.55*6/0.45) ≈ 1.5 sobre la media
+    # Si margin_min = m, necesitamos k * m ≈ 2.0 → k = 2.0 / m
+    min_margin = min(a[2] for a in achieved)
+    k = 2.0 / (min_margin + 1e-9)
+    # Limitar k para evitar W_a con valores enormes (mala legibilidad)
+    k = min(k, 150.0)
+
+    W_a_scaled = r2(W_a_base * k)
+
+    # Verificación final con W_a redondeada
+    ok_pairs = []
+    for dec_idx, enc_idx in target_pairs:
+        h_d = D[dec_idx]
+        scores = np.array([float(h_d @ W_a_scaled @ E[i]) for i in range(N)])
+        if int(np.argmax(softmax(scores))) == enc_idx:
+            ok_pairs.append((dec_idx, enc_idx))
+
+    if not ok_pairs and k < 150:
+        # El redondeo rompió los picos — subir escala hasta 3×
+        W_a_scaled = r2(W_a_base * k * 3)
+
+    return W_a_scaled
 
 def decoder_attn_forward_gru(h_T2_enc, enc_h2_all, W1, W2, W_c, W_a, W_combine, W_out):
+    """
+    W_a: ignorado — se construye internamente con make_interpretable_W_a
+    usando los h_dec^(2) reales (la atención es solo en la salida, no en las celdas).
+    """
     h1 = W_c @ h_T2_enc
     context_vec = h1.copy()
     context_info = {
@@ -609,9 +657,27 @@ def decoder_attn_forward_gru(h_T2_enc, enc_h2_all, W1, W2, W_c, W_a, W_combine, 
         "h_0_decoder_layer1": h1.tolist(),
     }
 
-    W_a_tuned = tune_attention_W_a(enc_h2_all, W_a)
     enc_arr = np.array(enc_h2_all)
     input_tokens = ["<START>"] + TARGET_TRANSLATION[:-1]
+
+    # Pasada preliminar: recolectar h_dec^(2) sin atención (la atención es
+    # output-only, así que las celdas GRU no dependen de W_a — los estados
+    # son idénticos a los de las pasadas principales).
+    h1_pre = context_vec.copy(); h2_pre = np.zeros(Q)
+    h_dec_states = []
+    for tok in input_tokens:
+        x = emb(tok)
+        h1_pre, _ = gru_step(x, h1_pre, W1)
+        h2_pre, _ = gru_step(h1_pre, h2_pre, W2)
+        h_dec_states.append(h2_pre.copy())
+
+    # Pares con match lingüístico fuerte y mathematicamente alcanzables:
+    # t=0 (gen I)     → enc[0] Me      (pronombre personal)
+    # t=1 (gen loved) → enc[1] encantó (traducción directa)
+    # Los pasos 2-4 producen h_dec casi idénticos (coseno > 0.99),
+    # así que cualquier W_a dará el mismo ganador para los tres.
+    target_pairs = [(0, 0), (1, 1)]
+    W_a_tuned = make_interpretable_W_a(h_dec_states, enc_h2_all, target_pairs)
 
     # Pasada 1: teacher forcing, recolectar h_tilde_seq
     h1 = context_vec.copy(); h2 = np.zeros(Q)
@@ -690,9 +756,21 @@ def decoder_attn_forward_lstm(h_T2_enc, c_T2_enc, enc_h2_all, W1, W2, W_c, W_a, 
         "h_0_decoder_layer1": h1.tolist(),
     }
 
-    W_a_tuned = tune_attention_W_a(enc_h2_all, W_a)
     enc_arr = np.array(enc_h2_all)
     input_tokens = ["<START>"] + TARGET_TRANSLATION[:-1]
+
+    # Pasada preliminar: los estados LSTM de las celdas no dependen de W_a
+    h1_pre = context_vec.copy(); c1_pre = np.zeros(P)
+    h2_pre = np.zeros(Q); c2_pre = np.zeros(Q)
+    h_dec_states = []
+    for tok in input_tokens:
+        x = emb(tok)
+        h1_pre, c1_pre, _ = lstm_step(x, h1_pre, c1_pre, W1)
+        h2_pre, c2_pre, _ = lstm_step(h1_pre, h2_pre, c2_pre, W2)
+        h_dec_states.append(h2_pre.copy())
+
+    target_pairs = [(0, 0), (1, 1)]
+    W_a_tuned = make_interpretable_W_a(h_dec_states, enc_h2_all, target_pairs)
 
     # Pasada 1: teacher forcing, recolectar h_tilde_seq
     h1 = context_vec.copy(); c1 = np.zeros(P)
