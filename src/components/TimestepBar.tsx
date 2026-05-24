@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { motion } from "framer-motion";
 import { useStore } from "../state/store";
 import { autoAdvanceInterval } from "../utils/timing";
 
@@ -26,12 +27,12 @@ function buildSteps(isTranslation: boolean): StepDef[] {
   return steps;
 }
 
-
 export default function TimestepBar() {
   const { modo, timestep, setTimestep, playState, avanzarTimestep, velocidad } = useStore();
   const isTranslation = modo === "translation";
   const steps = buildSteps(isTranslation);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isDragging = useRef(false);
 
   // Auto-advance when playing
   useEffect(() => {
@@ -76,29 +77,96 @@ export default function TimestepBar() {
     return () => window.removeEventListener("keydown", onKey);
   }, [avanzarTimestep]);
 
+  // Drag scrubbing: find which step button the pointer is over
+  function getStepFromPointer(clientX: number, clientY: number): number | null {
+    const el = document.elementFromPoint(clientX, clientY);
+    if (!el) return null;
+    const btn = (el as HTMLElement).closest("[data-step-index]") as HTMLElement | null;
+    if (!btn) return null;
+    const idx = parseInt(btn.dataset.stepIndex!, 10);
+    return isNaN(idx) ? null : idx;
+  }
+
+  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    isDragging.current = true;
+    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+    const idx = getStepFromPointer(e.clientX, e.clientY);
+    if (idx !== null) setTimestep(idx);
+  }
+
+  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!isDragging.current) return;
+    const idx = getStepFromPointer(e.clientX, e.clientY);
+    if (idx !== null) setTimestep(idx);
+  }
+
+  function onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    isDragging.current = false;
+    (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
+  }
+
+  const isPlaying = playState === "playing";
+
   return (
-    <div className="flex items-center gap-1 px-4 py-2 bg-gray-900 border-b border-gray-700 overflow-x-auto">
+    <div
+      className="flex items-center gap-1 px-4 py-2 bg-gray-900 border-b border-gray-700 overflow-x-auto select-none cursor-pointer"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerLeave={(e) => {
+        if (isDragging.current) {
+          isDragging.current = false;
+          (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
+        }
+      }}
+    >
       {steps.map((step) => {
         const active = step.index === timestep;
-        const bgClass = (() => {
+
+        const baseClass = (() => {
           if (active) {
-            if (step.type === "enc") return "bg-blue-500 text-white ring-2 ring-blue-300";
-            if (step.type === "dec") return "bg-orange-500 text-white ring-2 ring-orange-300";
-            return "bg-gray-400 text-white ring-2 ring-gray-200";
+            if (step.type === "enc") return "bg-blue-500 text-white";
+            if (step.type === "dec") return "bg-orange-500 text-white";
+            return "bg-gray-400 text-white";
           }
           if (step.type === "enc") return "bg-blue-900/70 text-blue-300 hover:bg-blue-800/70";
           if (step.type === "dec") return "bg-orange-900/70 text-orange-300 hover:bg-orange-800/70";
           return "bg-gray-700 text-gray-400 hover:bg-gray-600";
         })();
 
+        const ringClass = (() => {
+          if (!active) return "";
+          if (isPlaying) {
+            if (step.type === "enc") return "ring-2 ring-blue-300";
+            if (step.type === "dec") return "ring-2 ring-orange-300";
+            return "ring-2 ring-gray-200";
+          }
+          if (step.type === "enc") return "ring-2 ring-blue-300/60";
+          if (step.type === "dec") return "ring-2 ring-orange-300/60";
+          return "ring-2 ring-gray-200/60";
+        })();
+
         return (
-          <button
+          <div
             key={step.index}
-            onClick={() => setTimestep(step.index)}
-            className={`shrink-0 px-2 py-1 rounded text-xs font-mono transition-all cursor-pointer select-none ${bgClass}`}
+            data-step-index={step.index}
+            className={`relative shrink-0 px-2 py-1 rounded text-xs font-mono transition-colors ${baseClass} ${ringClass}`}
           >
             {step.label}
-          </button>
+            {/* Pulsing dot when playing and active */}
+            {active && isPlaying && (
+              <motion.span
+                className="absolute -top-1 -right-1 w-2 h-2 rounded-full"
+                style={{
+                  backgroundColor:
+                    step.type === "enc" ? "#93c5fd" :
+                    step.type === "dec" ? "#fdba74" : "#d1d5db",
+                }}
+                animate={{ opacity: [1, 0.2, 1], scale: [1, 1.4, 1] }}
+                transition={{ duration: 0.9, repeat: Infinity, ease: "easeInOut" }}
+              />
+            )}
+          </div>
         );
       })}
     </div>

@@ -4,10 +4,11 @@ import { getDecoderTimesteps, getTranslationScenario } from '../data/index';
 import { appData } from '../data/index';
 import { decoderTokenColor } from '../utils/colors';
 import { fmtPct, fmt } from '../utils/math-format';
+import { durationSec } from '../utils/timing';
 import MatrixDisplay from './MatrixDisplay';
 
 export default function SoftmaxHead() {
-  const { timestep, arquitectura, atencion } = useStore();
+  const { timestep, arquitectura, atencion, velocidad } = useStore();
   const decStep = timestep - 7; // 1..6
   const visible = decStep >= 1 && decStep <= 6;
 
@@ -29,7 +30,7 @@ export default function SoftmaxHead() {
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.3 }}
+        transition={{ duration: durationSec('embeddingAparece', velocidad) }}
         className="flex flex-row gap-5 items-start overflow-x-auto pb-2"
       >
         {/* W_out */}
@@ -67,7 +68,7 @@ export default function SoftmaxHead() {
                       className="h-full rounded-full"
                       initial={{ width: 0 }}
                       animate={{ width: `${(p / maxP) * 100}%` }}
-                      transition={{ duration: 0.4, ease: 'easeOut' }}
+                      transition={{ duration: durationSec('vectorViajando', velocidad), ease: 'easeOut' }}
                       style={{ backgroundColor: isWinner ? color : '#374151' }}
                     />
                   </div>

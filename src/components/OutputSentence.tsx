@@ -2,9 +2,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../state/store';
 import { getDecoderTimesteps } from '../data/index';
 import { decoderTokenColor } from '../utils/colors';
+import { durationSec } from '../utils/timing';
 
 export default function OutputSentence() {
-  const { timestep, arquitectura, atencion } = useStore();
+  const { timestep, arquitectura, atencion, velocidad } = useStore();
   const decTimesteps = getDecoderTimesteps(arquitectura, atencion);
 
   const decStep = Math.min(Math.max(timestep - 7, 0), 6);
@@ -21,7 +22,7 @@ export default function OutputSentence() {
             <motion.span
               initial={{ opacity: 0, y: -6, scale: 0.8 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ duration: 0.3 }}
+              transition={{ duration: durationSec('embeddingAparece', velocidad) }}
               className="font-mono text-sm font-semibold px-2 py-0.5 rounded-md"
               style={{
                 color: decoderTokenColor(tok),

@@ -7,9 +7,10 @@ import MatrixDisplay from './MatrixDisplay';
 import VectorDisplay from './VectorDisplay';
 import { encoderTokenColor } from '../utils/colors';
 import { fmt } from '../utils/math-format';
+import { durationSec } from '../utils/timing';
 
 export default function AttentionLayer() {
-  const { timestep, arquitectura, atencion } = useStore();
+  const { timestep, arquitectura, atencion, velocidad } = useStore();
   const [showWa, setShowWa] = useState(false);
 
   if (!atencion) return null;
@@ -115,7 +116,7 @@ export default function AttentionLayer() {
                     }}
                     initial={{ height: 0 }}
                     animate={{ height: `${Math.max(3, alpha * 72)}px` }}
-                    transition={{ duration: 0.4, ease: 'easeOut' }}
+                    transition={{ duration: durationSec('vectorViajando', velocidad), ease: 'easeOut' }}
                   >
                     {isPeak && (
                       <motion.div
@@ -172,7 +173,7 @@ export default function AttentionLayer() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: durationSec('aperturaModal', velocidad) }}
             className="overflow-hidden"
           >
             <div className="border-t border-amber-900/30 pt-2 mt-1">

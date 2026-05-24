@@ -4,9 +4,10 @@ import { appData, getTranslationScenario } from '../data/index';
 import { hasAttention } from '../data/types';
 import TokenPill from './TokenPill';
 import { encoderTokenColor } from '../utils/colors';
+import { durationSec } from '../utils/timing';
 
 export default function InputSentence() {
-  const { timestep, atencion, modo, arquitectura } = useStore();
+  const { timestep, atencion, modo, arquitectura, velocidad } = useStore();
   const tokens = appData.config.encoderTokens;
   const embeddings = appData.config.embeddings;
 
@@ -47,7 +48,7 @@ export default function InputSentence() {
         <motion.div
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
+          transition={{ duration: durationSec('embeddingAparece', velocidad) }}
           className="flex items-end gap-3 flex-wrap"
         >
           {tokens.map((token, i) => {
@@ -71,7 +72,7 @@ export default function InputSentence() {
                   }}
                   initial={{ height: 0 }}
                   animate={{ height: `${Math.max(2, alpha * 40)}px` }}
-                  transition={{ duration: 0.35, ease: 'easeOut' }}
+                  transition={{ duration: durationSec('vectorViajando', velocidad), ease: 'easeOut' }}
                 />
                 {/* Valor numérico */}
                 <span

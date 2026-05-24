@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../state/store';
 import { encoderTokenColor } from '../utils/colors';
 import { fmt } from '../utils/math-format';
+import { durationSec } from '../utils/timing';
 
 interface Props {
   token: string;
@@ -14,7 +15,7 @@ interface Props {
 
 export default function TokenPill({ token, embedding, isActive, isProcessed }: Props) {
   const [hovered, setHovered] = useState(false);
-  const { fijarTooltip, liberarTooltip, tooltipsFijos } = useStore();
+  const { fijarTooltip, liberarTooltip, tooltipsFijos, velocidad } = useStore();
   const id = `token-${token}`;
   const fixed = tooltipsFijos.includes(id);
   const showTooltip = hovered || fixed;
@@ -27,7 +28,7 @@ export default function TokenPill({ token, embedding, isActive, isProcessed }: P
           opacity: isProcessed && !isActive ? 0.55 : 1,
           scale: isActive ? 1.12 : 1,
         }}
-        transition={{ duration: 0.3 }}
+        transition={{ duration: durationSec('embeddingAparece', velocidad) }}
         className="px-3 py-1.5 rounded-full text-sm font-semibold cursor-pointer select-none border-2"
         style={{
           borderColor: color,
@@ -48,7 +49,7 @@ export default function TokenPill({ token, embedding, isActive, isProcessed }: P
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.15 }}
+            transition={{ duration: durationSec('cambioTooltip', velocidad) }}
             className="absolute top-full mt-2 z-50 bg-gray-900 border rounded-lg p-3 shadow-2xl min-w-[180px]"
             style={{ borderColor: `${color}55` }}
           >

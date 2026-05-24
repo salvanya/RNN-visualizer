@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../state/store';
 import { decoderTokenColor } from '../utils/colors';
 import { fmt } from '../utils/math-format';
+import { durationSec } from '../utils/timing';
 import type { EncoderLayerState, EncoderLayerStateLstm } from '../data/types';
 
 interface Props {
@@ -23,7 +24,7 @@ export default function DecoderCell({
   layer, t, layerState, inputToken, outputToken, isActive, tooltipSide, showCellState = false
 }: Props) {
   const [hovered, setHovered] = useState(false);
-  const { fijarTooltip, liberarTooltip, tooltipsFijos, abrirModalCelda } = useStore();
+  const { fijarTooltip, liberarTooltip, tooltipsFijos, abrirModalCelda, velocidad } = useStore();
   const id = `dec-l${layer}-t${t}`;
   const fixed = tooltipsFijos.includes(id);
   const showTooltip = hovered || fixed;
@@ -42,7 +43,7 @@ export default function DecoderCell({
       <motion.div
         initial={{ opacity: 0, scale: 0.7 }}
         animate={{ opacity: 1, scale: isActive ? 1.05 : 1 }}
-        transition={{ duration: 0.35, ease: 'easeOut' }}
+        transition={{ duration: durationSec('desdoblamientoTimestep', velocidad), ease: 'easeOut' }}
         className="w-24 rounded-lg border-2 p-2 cursor-pointer select-none flex flex-col gap-1.5"
         style={{
           borderColor: isActive ? color : `${color}66`,
@@ -86,7 +87,7 @@ export default function DecoderCell({
             initial={{ opacity: 0, y: tooltipSide === 'above' ? 4 : -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: tooltipSide === 'above' ? 4 : -4 }}
-            transition={{ duration: 0.15 }}
+            transition={{ duration: durationSec('cambioTooltip', velocidad) }}
             className={`absolute ${tooltipPositionClass} z-50 bg-gray-900 border rounded-xl p-3 shadow-2xl min-w-[210px]`}
             style={{ borderColor: `${color}44` }}
           >

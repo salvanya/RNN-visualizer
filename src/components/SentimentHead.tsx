@@ -4,13 +4,14 @@ import { appData } from "../data/index";
 import VectorDisplay from "./VectorDisplay";
 import MatrixDisplay from "./MatrixDisplay";
 import { fmtPct, fmt } from "../utils/math-format";
+import { durationSec } from "../utils/timing";
 
 const CLASS_LABELS = ["Negativo", "Neutro", "Positivo"];
 const CLASS_COLORS = ["#f87171", "#94a3b8", "#4ade80"];
 const CLASS_BG = ["rgba(127,29,29,0.5)", "rgba(30,41,59,0.5)", "rgba(20,83,45,0.5)"];
 
 export default function SentimentHead() {
-  const { timestep, arquitectura } = useStore();
+  const { timestep, arquitectura, velocidad } = useStore();
 
   const scenarioKey = `${arquitectura}_sentiment` as const;
   const head = appData.scenarios[scenarioKey].head;
@@ -26,7 +27,7 @@ export default function SentimentHead() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
+          transition={{ duration: durationSec('cambioTooltip', velocidad) }}
           className="text-gray-600 text-xs font-mono italic px-1"
         >
           {timestep === 0
@@ -39,7 +40,7 @@ export default function SentimentHead() {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.4 }}
+          transition={{ duration: durationSec('embeddingAparece', velocidad) }}
           className="overflow-x-auto pb-2"
         >
           <div className="flex flex-row gap-5 items-start min-w-max">

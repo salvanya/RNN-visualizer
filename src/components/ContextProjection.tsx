@@ -3,9 +3,10 @@ import { useStore } from '../state/store';
 import { getTranslationScenario } from '../data/index';
 import MatrixDisplay from './MatrixDisplay';
 import { fmt } from '../utils/math-format';
+import { durationSec } from '../utils/timing';
 
 export default function ContextProjection() {
-  const { timestep, arquitectura, atencion } = useStore();
+  const { timestep, arquitectura, atencion, velocidad } = useStore();
   const visible = timestep >= 7;
 
   const scenario = getTranslationScenario(arquitectura, atencion);
@@ -18,7 +19,7 @@ export default function ContextProjection() {
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.4 }}
+          transition={{ duration: durationSec('embeddingAparece', velocidad) }}
           className="flex flex-row items-start gap-4 p-3 rounded-lg bg-gray-900/80 border border-gray-800 overflow-x-auto shrink-0"
         >
           {/* h_T^(2) */}
