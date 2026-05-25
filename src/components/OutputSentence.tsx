@@ -13,7 +13,6 @@ export default function OutputSentence() {
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <span className="text-[11px] text-gray-500 font-mono shrink-0">Salida (EN):</span>
       {tokens.length === 0 ? (
         <span className="text-[11px] text-gray-700 font-mono italic">…esperando decoder</span>
       ) : (

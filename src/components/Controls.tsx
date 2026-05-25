@@ -18,7 +18,7 @@ export default function Controls() {
 
       {/* Arquitectura */}
       <div className="flex items-center gap-1">
-        <span className="text-gray-400 mr-1">Arq:</span>
+        <span className="text-gray-400 mr-1">Arquitectura:</span>
         {(["GRU", "LSTM"] as Arquitectura[]).map((a) => (
           <button
             key={a}
@@ -106,7 +106,7 @@ export default function Controls() {
 
       {/* Velocidad */}
       <div className="flex items-center gap-1">
-        <span className="text-gray-400 mr-1">Vel:</span>
+        <span className="text-gray-400 mr-1">Velocidad:</span>
         {([0.5, 1, 2] as Velocidad[]).map((v) => (
           <button
             key={v}

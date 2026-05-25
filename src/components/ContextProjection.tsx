@@ -53,6 +53,19 @@ export default function ContextProjection() {
             <span className="text-[9px] text-gray-500 font-mono">capa 2 del decoder</span>
             <span className="text-[9px] text-gray-600 font-mono">h₀^(dec,2) = [0…0]</span>
           </div>
+
+          {atencion && (
+            <div className="self-center ml-2 pl-3 border-l border-amber-900/40 max-w-[260px]">
+              <span className="text-[9px] font-mono text-amber-400/80 uppercase tracking-wider">
+                Nota · con atención
+              </span>
+              <p className="text-[10px] text-gray-400 leading-snug mt-0.5">
+                El estado inicial del decoder es el <span className="text-green-400 font-mono">mismo</span> con o sin
+                atención. La atención no reemplaza esta inicialización — agrega información{' '}
+                <span className="text-amber-300">en cada paso de salida</span> (ver más abajo).
+              </p>
+            </div>
+          )}
         </motion.div>
       )}
     </AnimatePresence>

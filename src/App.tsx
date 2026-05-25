@@ -1,5 +1,6 @@
 import Header from "./components/Header";
 import Controls from "./components/Controls";
+import DimensionsLegend from "./components/DimensionsLegend";
 import TimestepBar from "./components/TimestepBar";
 import InputSentence from "./components/InputSentence";
 import OutputSentence from "./components/OutputSentence";
@@ -22,14 +23,7 @@ export default function App() {
       <header className="shrink-0">
         <Header />
         <Controls />
-
-        {/* Frase de salida (solo translation) — arriba de la barra de timesteps */}
-        {isTranslation && (
-          <div className="px-6 py-2 bg-gray-900 border-b border-gray-800">
-            <OutputSentence />
-          </div>
-        )}
-
+        <DimensionsLegend />
         <TimestepBar />
       </header>
 
@@ -63,6 +57,14 @@ export default function App() {
             <section>
               <SectionHeader title="Decoder" color="#fb923c" subtitle="autoregresivo, 2 capas" />
               <Decoder />
+            </section>
+
+            {/* Colofón: frase generada como resultado final de la inferencia */}
+            <section className="mt-2">
+              <SectionHeader title="Salida (EN)" color="#fb923c" subtitle="traducción generada token a token" />
+              <div className="px-4 py-3 rounded-lg bg-gray-900/70 border border-orange-900/40">
+                <OutputSentence />
+              </div>
             </section>
           </>
         )}

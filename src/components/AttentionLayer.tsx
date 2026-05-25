@@ -157,12 +157,18 @@ export default function AttentionLayer() {
             color="#fbbf24"
             withBars
           />
-          <VectorDisplay
-            values={h_tilde}
-            label={`h̃_t = tanh(W_combine·[h_dec;c_t])  (dim ${h_tilde.length})`}
-            color="#f97316"
-            withBars
-          />
+          <div className="flex flex-col gap-1">
+            <VectorDisplay
+              values={h_tilde}
+              label={`h̃_t = tanh(W_combine·[h_dec;c_t])  (dim ${h_tilde.length})`}
+              color="#f97316"
+              withBars
+            />
+            <div className="text-[9px] font-mono text-orange-300/90 leading-tight max-w-[200px] mt-0.5 border-l-2 border-orange-500/60 pl-2">
+              ↓ entra a <span className="text-orange-200 font-semibold">W_out</span> en lugar de{' '}
+              <span className="line-through text-gray-500">h_dec_t^(2)</span>
+            </div>
+          </div>
         </div>
       </div>
 

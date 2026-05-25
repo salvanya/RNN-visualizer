@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../state/store';
 import { getDecoderTimesteps, getTranslationScenario } from '../data/index';
 import { appData } from '../data/index';
+import { hasAttention } from '../data/types';
 import { decoderTokenColor } from '../utils/colors';
 import { fmtPct, fmt } from '../utils/math-format';
 import { durationSec } from '../utils/timing';
@@ -23,6 +24,14 @@ export default function SoftmaxHead() {
   const maxP = Math.max(...probas);
   const W_out = scenario.decoder.W_out;
 
+  // Vector que realmente entra a W_out: h_dec_t^(2) sin atención, h̃_t con atención.
+  const inputVec = hasAttention(tsData) ? tsData.attention.h_tilde : tsData.layer2.h_t;
+  const inputLabel = hasAttention(tsData) ? 'h̃_t' : 'h_dec_t^(2)';
+  const inputSubtitle = hasAttention(tsData)
+    ? 'sale del mecanismo de atención'
+    : 'estado oculto capa 2 decoder';
+  const inputColor = hasAttention(tsData) ? '#f97316' : '#fb923c';
+
   return (
     <AnimatePresence mode="wait">
       <motion.div
@@ -33,6 +42,33 @@ export default function SoftmaxHead() {
         transition={{ duration: durationSec('embeddingAparece', velocidad) }}
         className="flex flex-row gap-5 items-start overflow-x-auto pb-2"
       >
+        {/* Vector de entrada al softmax (h_dec o h̃_t) */}
+        <div
+          className="flex flex-col gap-1 shrink-0 p-3 rounded-lg bg-gray-900 border"
+          style={{ borderColor: hasAttention(tsData) ? 'rgba(249,115,22,0.5)' : 'rgb(31,41,55)' }}
+        >
+          <div className="flex items-center gap-1.5">
+            <span className="font-mono text-[11px] font-semibold" style={{ color: inputColor }}>
+              {inputLabel}
+            </span>
+            {hasAttention(tsData) && (
+              <span className="text-[8px] font-mono uppercase tracking-wider text-amber-400/80 bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-900/40">
+                atención
+              </span>
+            )}
+          </div>
+          <span className="font-mono text-[9px] text-gray-500">{inputSubtitle} (dim {inputVec.length})</span>
+          <div className="flex flex-col gap-0.5 mt-1">
+            {inputVec.map((v, i) => (
+              <span key={i} className="font-mono text-[10px]" style={{ color: inputColor, opacity: 0.85 }}>
+                {fmt(v)}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="self-center text-gray-600 font-mono text-sm select-none mt-4">×</div>
+
         {/* W_out */}
         <div className="flex flex-col gap-1 shrink-0 p-3 rounded-lg bg-gray-900 border border-gray-800">
           <span className="font-mono text-[11px] font-semibold text-orange-400">W_out</span>

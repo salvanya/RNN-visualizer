@@ -329,7 +329,7 @@ export default function LayerStack({
       {/* Frames (background) */}
       <LayerFrame
         title={`Capa 1 · ${layer1Units} unidades`}
-        subtitle={isLstm ? `LSTM · ${layer1Units} h + ${layer1Units} C` : `GRU · ${layer1Units} h`}
+        subtitle={isLstm ? `LSTM · estados h, C (dim ${layer1Units} cada uno)` : `GRU · estado oculto h (dim ${layer1Units})`}
         color={accentColor}
         top={0}
         height={L1_FRAME_HEIGHT}
@@ -337,7 +337,7 @@ export default function LayerStack({
       />
       <LayerFrame
         title={`Capa 2 · ${layer2Units} unidades`}
-        subtitle={isLstm ? `LSTM · ${layer2Units} h + ${layer2Units} C` : `GRU · ${layer2Units} h`}
+        subtitle={isLstm ? `LSTM · estados h, C (dim ${layer2Units} cada uno)` : `GRU · estado oculto h (dim ${layer2Units})`}
         color={accentColor}
         top={L2_FRAME_TOP}
         height={L2_FRAME_HEIGHT}
@@ -462,7 +462,7 @@ export default function LayerStack({
                     isActive={isActiveCol}
                     label={`h_${tIdx + 1}⁽¹⁾[${i + 1}]`}
                     tokenLabel={ts.tokenLabel}
-                    tooltipRows={buildHRows(hv, hPrev, cv, cPrev, colColor, tIdx + 1, 1)}
+                    tooltipRows={buildHRows(hv, hPrev, cv, cPrev, colColor, tIdx + 1, 1, i + 1)}
                     tooltipSide="above"
                   />
                 );
@@ -502,7 +502,7 @@ export default function LayerStack({
                     isActive={isActiveCol}
                     label={`h_${tIdx + 1}⁽²⁾[${i + 1}]`}
                     tokenLabel={ts.tokenLabel}
-                    tooltipRows={buildHRows(hv, hPrev, cv, cPrev, colColor, tIdx + 1, 2)}
+                    tooltipRows={buildHRows(hv, hPrev, cv, cPrev, colColor, tIdx + 1, 2, i + 1)}
                     tooltipSide="below"
                   />
                 );
@@ -524,16 +524,18 @@ function buildHRows(
   cPrev: number | undefined,
   color: string,
   t: number,
-  layer: 1 | 2
+  layer: 1 | 2,
+  unit: number
 ): UnitTooltipRow[] {
   const sup = layer === 1 ? '⁽¹⁾' : '⁽²⁾';
+  const idx = `[${unit}]`;
   const rows: UnitTooltipRow[] = [
-    { label: `h_${t - 1}${sup}[i]`, value: hPrev, color: `${color}99` },
-    { label: `h_${t}${sup}[i]`, value: h, color, highlight: true },
+    { label: `h_${t - 1}${sup}${idx}`, value: hPrev, color: `${color}99` },
+    { label: `h_${t}${sup}${idx}`, value: h, color, highlight: true },
   ];
   if (c !== undefined && cPrev !== undefined) {
-    rows.push({ label: `C_${t - 1}${sup}[i]`, value: cPrev, color: '#ca8a04' });
-    rows.push({ label: `C_${t}${sup}[i]`, value: c, color: '#facc15', highlight: true });
+    rows.push({ label: `C_${t - 1}${sup}${idx}`, value: cPrev, color: '#ca8a04' });
+    rows.push({ label: `C_${t}${sup}${idx}`, value: c, color: '#facc15', highlight: true });
   }
   return rows;
 }
