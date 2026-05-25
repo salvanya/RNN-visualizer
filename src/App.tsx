@@ -1,22 +1,26 @@
+import Header from "./components/Header";
 import Controls from "./components/Controls";
 import TimestepBar from "./components/TimestepBar";
 import InputSentence from "./components/InputSentence";
 import OutputSentence from "./components/OutputSentence";
 import Encoder from "./components/Encoder";
 import Decoder from "./components/Decoder";
+import AttentionLayer from "./components/AttentionLayer";
 import SentimentHead from "./components/SentimentHead";
 import CellInternalModal from "./components/CellInternalModal";
 import { SectionHeader } from "./components/Section";
 import { useStore } from "./state/store";
 
 export default function App() {
-  const { modo } = useStore();
+  const { modo, atencion, timestep } = useStore();
   const isTranslation = modo === "translation";
+  const decoderStarted = timestep >= 8;
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
       {/* Barra superior */}
       <header className="shrink-0">
+        <Header />
         <Controls />
 
         {/* Frase de salida (solo translation) — arriba de la barra de timesteps */}
@@ -47,10 +51,20 @@ export default function App() {
             <SentimentHead />
           </section>
         ) : (
-          <section>
-            <SectionHeader title="Decoder" color="#fb923c" subtitle="autoregresivo, 2 capas" />
-            <Decoder />
-          </section>
+          <>
+            {/* Atención entre encoder y decoder (solo si está activada y el decoder ya arrancó) */}
+            {atencion && decoderStarted && (
+              <section>
+                <SectionHeader title="Mecanismo de atención" color="#fbbf24" subtitle="Luong general — puente encoder ↔ decoder" />
+                <AttentionLayer />
+              </section>
+            )}
+
+            <section>
+              <SectionHeader title="Decoder" color="#fb923c" subtitle="autoregresivo, 2 capas" />
+              <Decoder />
+            </section>
+          </>
         )}
       </main>
 
