@@ -4,6 +4,7 @@ import { decoderTokenColor } from '../utils/colors';
 import LayerStack, { type LayerStackTimestep } from './LayerStack';
 import ContextProjection from './ContextProjection';
 import SoftmaxHead from './SoftmaxHead';
+import AttentionLayer from './AttentionLayer';
 import { SectionHeader, WaitingMessage } from './Section';
 
 export default function Decoder() {
@@ -55,6 +56,13 @@ export default function Decoder() {
           </WaitingMessage>
         )}
       </div>
+
+      {visibleCount > 0 && atencion && (
+        <div>
+          <SectionHeader title="Mecanismo de atención" color="#fbbf24" subtitle="Luong general — puente encoder ↔ decoder" size="sm" />
+          <AttentionLayer />
+        </div>
+      )}
 
       {visibleCount > 0 && (
         <div>
