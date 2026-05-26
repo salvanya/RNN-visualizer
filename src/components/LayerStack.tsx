@@ -16,7 +16,10 @@ import { isLstmLayer } from '../data/types';
 
 const LEFT_GUTTER = 56;
 const COL_PITCH_BASE = 156;
-const TOP_PADDING = 26;
+// TOP_PADDING dejá espacio suficiente para que el header de columna (t_X^(...))
+// no choque con la pastilla del LayerFrame ("Capa 1 · N unidades") que pokea
+// hacia arriba con top: -10.
+const TOP_PADDING = 44;
 const HEADER_HEIGHT = 22;
 const HEADER_TO_INPUTS = 16;
 const INPUT_NODE_SIZE = 32;
@@ -26,7 +29,7 @@ const UNIT_NODE_SIZE = 46;
 const UNIT_NODE_PITCH = 56;
 const FRAME_BOTTOM_PADDING = 22;
 const LAYER_GAP = 22;
-const L2_HEADER_OFFSET = 16;
+const L2_HEADER_OFFSET = 28;
 const L2_FANIN_GAP = 56;
 
 // ─── Weight aggregation ───────────────────────────────────────────────────
@@ -583,7 +586,9 @@ function ColumnHeader({ cx, top, tLabel, side, tokenLabel, tokenColor, onMicrosc
         width: colPitch,
         height: HEADER_HEIGHT,
         background: '#0a0a0acc',
-        zIndex: 10,
+        // Por encima de la pastilla del LayerFrame (z=15) para que ésta no tape
+        // el botón microscopio cuando colisionan visualmente (típicamente en t=1).
+        zIndex: 20,
       }}
     >
       <span className="font-mono text-[10px]" style={{ color: tokenColor }}>
