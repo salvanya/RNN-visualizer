@@ -24,7 +24,6 @@ export default function AttentionLayer() {
   if (!hasAttention(ts)) return null;
 
   const { attention, softmax: sm } = ts;
-  const encoderTokens = appData.config.encoderTokens;
   const isBahdanau = isBahdanauAttention(attention);
   const variantLabel = isBahdanau ? "Bahdanau (aditiva)" : "Luong (multiplicativa)";
 
