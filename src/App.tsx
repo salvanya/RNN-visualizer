@@ -17,8 +17,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
-      {/* Barra superior */}
-      <header className="shrink-0">
+      {/* Barra superior — sticky para que no desaparezca con scroll */}
+      <header className="sticky top-0 z-30 shrink-0 bg-gray-950 shadow-md shadow-black/40">
         <Header />
         <Controls />
         <DimensionsLegend />

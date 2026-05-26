@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 export type Arquitectura = "GRU" | "LSTM";
 export type Modo = "sentiment" | "translation";
+export type Atencion = "none" | "luong" | "bahdanau";
 export type PlayState = "stopped" | "playing" | "paused";
 export type Velocidad = 0.5 | 1 | 2;
 
@@ -16,7 +17,7 @@ export interface ModalCeldaId {
 interface AppState {
   arquitectura: Arquitectura;
   modo: Modo;
-  atencion: boolean;
+  atencion: Atencion;
   // timestep: 0 = t_0, 1..7 = encoder, 8..13 = decoder
   timestep: number;
   playState: PlayState;
@@ -27,7 +28,7 @@ interface AppState {
   // Actions
   setArquitectura: (a: Arquitectura) => void;
   setModo: (m: Modo) => void;
-  setAtencion: (v: boolean) => void;
+  setAtencion: (v: Atencion) => void;
   setTimestep: (t: number) => void;
   avanzarTimestep: () => void;
   retrocederTimestep: () => void;
@@ -48,7 +49,7 @@ function maxTimestep(modo: Modo): number {
 export const useStore = create<AppState>((set, get) => ({
   arquitectura: "GRU",
   modo: "sentiment",
-  atencion: false,
+  atencion: "none",
   timestep: 0,
   playState: "stopped",
   velocidad: 1,

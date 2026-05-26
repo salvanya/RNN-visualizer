@@ -54,7 +54,7 @@ export default function ContextProjection() {
             <span className="text-[9px] text-gray-600 font-mono">h₀^(dec,2) = [0…0]</span>
           </div>
 
-          {atencion && (
+          {atencion !== "none" && (
             <div className="self-center ml-2 pl-3 border-l border-amber-900/40 max-w-[260px]">
               <span className="text-[9px] font-mono text-amber-400/80 uppercase tracking-wider">
                 Nota · con atención

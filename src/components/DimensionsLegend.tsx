@@ -8,8 +8,9 @@ type Chip = {
 };
 
 export default function DimensionsLegend() {
-  const { modo } = useStore();
+  const { modo, atencion } = useStore();
   const isTranslation = modo === "translation";
+  const isBahdanau = isTranslation && atencion === "bahdanau";
 
   const embeddingChip: Chip = {
     symbol: "d",
@@ -35,10 +36,18 @@ export default function DimensionsLegend() {
     color: "#a78bfa", // violet-400
   };
 
+  const attentionChip: Chip = {
+    symbol: "a",
+    value: 4,
+    label: "atención · Bahdanau",
+    color: "#fbbf24", // amber-400
+  };
+
   const chips: Chip[] = [
     embeddingChip,
     ...encoderChips,
     ...(isTranslation ? decoderChips : []),
+    ...(isBahdanau ? [attentionChip] : []),
     ...(isTranslation ? [vocabChip] : []),
   ];
 

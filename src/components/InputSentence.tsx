@@ -16,8 +16,8 @@ export default function InputSentence() {
   // Obtener alphas del paso de decoder activo (solo en modo atención)
   let alphas: number[] | null = null;
   const decIdx = timestep - 8;
-  if (atencion && modo === 'translation' && decIdx >= 0 && decIdx <= 5) {
-    const scenario = getTranslationScenario(arquitectura, true);
+  if (atencion !== 'none' && modo === 'translation' && decIdx >= 0 && decIdx <= 5) {
+    const scenario = getTranslationScenario(arquitectura, atencion);
     const ts = scenario.decoder.timesteps[decIdx];
     if (hasAttention(ts)) {
       alphas = ts.attention.alphas;

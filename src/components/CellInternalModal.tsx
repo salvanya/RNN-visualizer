@@ -293,9 +293,11 @@ export default function CellInternalModal() {
   let inputDim: string;
 
   if (!isDecoder) {
+    const attnSuffix =
+      atencion === "none" ? "noattn" : atencion === "bahdanau" ? "attn_bahdanau" : "attn";
     const scenarioKey = modo === 'sentiment'
       ? `${arquitectura}_sentiment`
-      : `${arquitectura}_translation_${atencion ? 'attn' : 'noattn'}`;
+      : `${arquitectura}_translation_${attnSuffix}`;
     const scenarios = appData.scenarios as unknown as Record<string, {
       encoder: { weights: { layer1: GruLayerWeights | LstmLayerWeights; layer2: GruLayerWeights | LstmLayerWeights }; timesteps: EncoderTimestep[] }
     }>;

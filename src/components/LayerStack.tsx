@@ -15,7 +15,7 @@ import { isLstmLayer } from '../data/types';
 // ─── Layout constants ──────────────────────────────────────────────────────
 
 const LEFT_GUTTER = 56;
-const COL_PITCH = 156;
+const COL_PITCH_BASE = 156;
 const TOP_PADDING = 26;
 const HEADER_HEIGHT = 22;
 const HEADER_TO_INPUTS = 16;
@@ -87,7 +87,10 @@ interface Props {
   accentColor: string;         // azul para enc, naranja para dec
   layer1Units: number;         // m o p
   layer2Units: number;         // l o q
-  inputDimL1: number;          // d (embedding dim)
+  inputDimL1: number;          // d (embedding dim) o d+l (Bahdanau con contexto concatenado)
+  // Si está presente, los primeros `embeddingDim` inputs son embedding (color del token)
+  // y los siguientes (inputDimL1 - embeddingDim) son contexto de atención (color cálido).
+  embeddingDim?: number;
   visibleCount: number;
   activeT: number | null;
   timesteps: LayerStackTimestep[];
@@ -104,6 +107,7 @@ export default function LayerStack({
   layer1Units,
   layer2Units,
   inputDimL1,
+  embeddingDim,
   visibleCount,
   activeT,
   timesteps,
@@ -114,6 +118,11 @@ export default function LayerStack({
   const { abrirModalCelda, velocidad } = useStore();
 
   // ── Layout computation ──
+  // Pitch dinámico: si inputDimL1 es grande (Bahdanau con dim 8), la columna
+  // necesita más ancho para que los inputs faneados no se superpongan con la
+  // columna vecina ni se tapen los tokens.
+  const inputSpan = (inputDimL1 - 1) * INPUT_NODE_PITCH_X;
+  const COL_PITCH = Math.max(COL_PITCH_BASE, inputSpan + 56);
   const colX = (tIdx: number) => LEFT_GUTTER + (tIdx + 0.5) * COL_PITCH;
   // Inputs FANEAN HORIZONTALMENTE: x relativo al centro de la columna
   const inputOffsetX = (k: number) => (k - (inputDimL1 - 1) / 2) * INPUT_NODE_PITCH_X;
@@ -417,28 +426,38 @@ export default function LayerStack({
                 tokenLabel={ts.tokenLabel}
                 tokenColor={colColor}
                 onMicroscope={() => abrirModalCelda({ layer: 1, t: tIdx + 1, lado: side })}
+                colPitch={COL_PITCH}
               />
 
-              {/* Input nodes (layer 1) — embedding, fanned horizontally */}
-              {ts.inputVector.map((v, k) => (
-                <UnitNode
-                  key={`in-${tIdx}-${k}`}
-                  id={`${side}-in-l1-t${tIdx + 1}-k${k}`}
-                  cx={l1InputX(tIdx, k)}
-                  cy={L1_INPUT_Y}
-                  size={INPUT_NODE_SIZE}
-                  value={v}
-                  borderColor={colColor}
-                  fillOpacity={0.08}
-                  isActive={isActiveCol}
-                  label={`x_${tIdx + 1}[${k + 1}]`}
-                  tokenLabel={ts.inputTokenLabel ?? ts.tokenLabel}
-                  tooltipRows={[
-                    { label: 'embedding', value: v, color: colColor, highlight: true },
-                  ]}
-                  tooltipSide="above"
-                />
-              ))}
+              {/* Input nodes (layer 1) — embedding (y opcionalmente contexto de atención), fanned horizontally */}
+              {ts.inputVector.map((v, k) => {
+                const isContext = embeddingDim !== undefined && k >= embeddingDim;
+                const nodeColor = isContext ? '#fbbf24' : colColor;
+                const rowLabel = isContext ? 'contexto c_t' : 'embedding';
+                const ctxIdx = isContext ? k - (embeddingDim ?? 0) : k;
+                const labelText = isContext
+                  ? `c_${tIdx + 1}[${ctxIdx + 1}]`
+                  : `x_${tIdx + 1}[${k + 1}]`;
+                return (
+                  <UnitNode
+                    key={`in-${tIdx}-${k}`}
+                    id={`${side}-in-l1-t${tIdx + 1}-k${k}`}
+                    cx={l1InputX(tIdx, k)}
+                    cy={L1_INPUT_Y}
+                    size={INPUT_NODE_SIZE}
+                    value={v}
+                    borderColor={nodeColor}
+                    fillOpacity={0.08}
+                    isActive={isActiveCol}
+                    label={labelText}
+                    tokenLabel={ts.inputTokenLabel ?? ts.tokenLabel}
+                    tooltipRows={[
+                      { label: rowLabel, value: v, color: nodeColor, highlight: true },
+                    ]}
+                    tooltipSide="above"
+                  />
+                );
+              })}
 
               {/* Layer 1 unit nodes */}
               {Array.from({ length: layer1Units }, (_, i) => {
@@ -478,6 +497,7 @@ export default function LayerStack({
                 tokenColor={colColor}
                 onMicroscope={() => abrirModalCelda({ layer: 2, t: tIdx + 1, lado: side })}
                 compact
+                colPitch={COL_PITCH}
               />
 
               {/* Layer 2 unit nodes */}
@@ -549,17 +569,18 @@ interface ColumnHeaderProps {
   tokenColor: string;
   onMicroscope: () => void;
   compact?: boolean;
+  colPitch: number;
 }
 
-function ColumnHeader({ cx, top, tLabel, side, tokenLabel, tokenColor, onMicroscope, compact }: ColumnHeaderProps) {
+function ColumnHeader({ cx, top, tLabel, side, tokenLabel, tokenColor, onMicroscope, compact, colPitch }: ColumnHeaderProps) {
   const sup = side === 'enc' ? '⁽ᵉ⁾' : '⁽ᵈ⁾';
   return (
     <div
       className="absolute flex items-center justify-center gap-1.5 rounded-md"
       style={{
-        left: cx - COL_PITCH / 2,
+        left: cx - colPitch / 2,
         top,
-        width: COL_PITCH,
+        width: colPitch,
         height: HEADER_HEIGHT,
         background: '#0a0a0acc',
         zIndex: 10,

@@ -1,13 +1,10 @@
-import { Play, Pause, Square } from "lucide-react";
-import { useStore, type Arquitectura, type Modo, type Velocidad } from "../state/store";
+import { useStore, type Arquitectura, type Atencion, type Modo } from "../state/store";
 
 export default function Controls() {
   const {
     arquitectura, setArquitectura,
     modo, setModo,
     atencion, setAtencion,
-    playState, setPlayState,
-    velocidad, setVelocidad,
     tooltipsFijos, limpiarTooltips,
   } = useStore();
 
@@ -55,72 +52,36 @@ export default function Controls() {
         ))}
       </div>
 
-      {/* Atención (solo translation) */}
+      {/* Atención (solo translation) — radio tri-state */}
       {isTranslation && (
-        <div className="flex items-center gap-2">
-          <span className="text-gray-400">Atención:</span>
-          <button
-            onClick={() => setAtencion(!atencion)}
-            className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors ${
-              atencion ? "bg-orange-500" : "bg-gray-600"
-            }`}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                atencion ? "translate-x-5" : "translate-x-1"
+        <div className="flex items-center gap-1">
+          <span className="text-gray-400 mr-1">Atención:</span>
+          {([
+            ["none", "Sin atención"],
+            ["bahdanau", "Bahdanau"],
+            ["luong", "Luong"],
+          ] as [Atencion, string][]).map(([a, label]) => (
+            <button
+              key={a}
+              onClick={() => setAtencion(a)}
+              className={`px-3 py-1 rounded text-xs font-semibold transition-colors ${
+                atencion === a
+                  ? "bg-orange-500 text-white"
+                  : "bg-gray-700 text-gray-300 hover:bg-gray-600"
               }`}
-            />
-          </button>
+              title={
+                a === "none"
+                  ? "Decoder ve solo el contexto comprimido del encoder"
+                  : a === "luong"
+                  ? "Atención multiplicativa, output-side"
+                  : "Atención aditiva, input-side (modifica la dinámica del decoder)"
+              }
+            >
+              {label}
+            </button>
+          ))}
         </div>
       )}
-
-      <div className="h-5 border-l border-gray-600" />
-
-      {/* Play / Pause / Stop */}
-      <div className="flex items-center gap-1">
-        {playState !== "playing" ? (
-          <button
-            onClick={() => setPlayState("playing")}
-            className="p-1.5 rounded bg-gray-700 hover:bg-green-700 transition-colors"
-            title="Reproducir (Espacio)"
-          >
-            <Play size={14} />
-          </button>
-        ) : (
-          <button
-            onClick={() => setPlayState("paused")}
-            className="p-1.5 rounded bg-green-700 hover:bg-green-600 transition-colors"
-            title="Pausar (Espacio)"
-          >
-            <Pause size={14} />
-          </button>
-        )}
-        <button
-          onClick={() => setPlayState("stopped")}
-          className="p-1.5 rounded bg-gray-700 hover:bg-red-700 transition-colors"
-          title="Detener"
-        >
-          <Square size={14} />
-        </button>
-      </div>
-
-      {/* Velocidad */}
-      <div className="flex items-center gap-1">
-        <span className="text-gray-400 mr-1">Velocidad:</span>
-        {([0.5, 1, 2] as Velocidad[]).map((v) => (
-          <button
-            key={v}
-            onClick={() => setVelocidad(v)}
-            className={`px-2 py-1 rounded text-xs font-mono transition-colors ${
-              velocidad === v
-                ? "bg-gray-500 text-white"
-                : "bg-gray-700 text-gray-300 hover:bg-gray-600"
-            }`}
-          >
-            {v}x
-          </button>
-        ))}
-      </div>
 
       {/* Limpiar tooltips */}
       {tooltipsFijos.length > 0 && (

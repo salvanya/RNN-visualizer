@@ -27,6 +27,7 @@ L = 4   # encoder capa 2
 P = 5   # decoder capa 1
 Q = 3   # decoder capa 2
 V = 12  # vocabulario decoder
+A = 4   # dimensión interna de atención Bahdanau (aditiva)
 
 ENCODER_TOKENS = ["Me", "encantó", "la", "pizza", "de", "este", "lugar"]
 VOCAB = ["<START>", "<END>", "I", "you", "loved", "hated",
@@ -339,34 +340,34 @@ def tune_sentiment_head(h_T, target_class=2):
 # ---------------------------------------------------------------------------
 
 def make_gru_weights_dec():
-    # Capa 1: input D=4, hidden P=5
+    # Decoder con gate-opening (b_z negativo + W_ih_n grande) para que h_dec
+    # varíe fuertemente entre timesteps. Necesario para que la atención Luong
+    # pueda discriminar pasos 3-6 (sin esto, h_dec[2..5] son casi idénticos).
     W1 = {
         "W_ih_r": make_weight(P, D), "W_hh_r": make_weight(P, P), "b_r": make_bias(P),
-        "W_ih_z": make_weight(P, D), "W_hh_z": make_weight(P, P), "b_z": make_bias(P, 0.1),
-        "W_ih_n": make_weight(P, D), "W_hh_n": make_weight(P, P), "b_n": make_bias(P),
+        "W_ih_z": make_weight(P, D), "W_hh_z": make_weight(P, P), "b_z": make_bias(P, -1.5),
+        "W_ih_n": make_weight(P, D, scale=1.5), "W_hh_n": make_weight(P, P, scale=0.1), "b_n": make_bias(P),
     }
-    # Capa 2: input P=5, hidden Q=3
     W2 = {
         "W_ih_r": make_weight(Q, P), "W_hh_r": make_weight(Q, Q), "b_r": make_bias(Q),
-        "W_ih_z": make_weight(Q, P), "W_hh_z": make_weight(Q, Q), "b_z": make_bias(Q, 0.1),
-        "W_ih_n": make_weight(Q, P), "W_hh_n": make_weight(Q, Q), "b_n": make_bias(Q),
+        "W_ih_z": make_weight(Q, P), "W_hh_z": make_weight(Q, Q), "b_z": make_bias(Q, -1.5),
+        "W_ih_n": make_weight(Q, P, scale=1.5), "W_hh_n": make_weight(Q, Q, scale=0.1), "b_n": make_bias(Q),
     }
     return W1, W2
 
 def make_lstm_weights_dec():
-    # Capa 1: input D=4, hidden P=5
+    # Gate-opening análogo para LSTM (input gate abierta + candidate fuerte).
     W1 = {
         "W_ih_f": make_weight(P, D), "W_hh_f": make_weight(P, P), "b_f": make_bias(P, 1.0),
-        "W_ih_i": make_weight(P, D), "W_hh_i": make_weight(P, P), "b_i": make_bias(P),
-        "W_ih_g": make_weight(P, D), "W_hh_g": make_weight(P, P), "b_g": make_bias(P),
-        "W_ih_o": make_weight(P, D), "W_hh_o": make_weight(P, P), "b_o": make_bias(P),
+        "W_ih_i": make_weight(P, D), "W_hh_i": make_weight(P, P), "b_i": make_bias(P, 1.0),
+        "W_ih_g": make_weight(P, D, scale=1.5), "W_hh_g": make_weight(P, P, scale=0.1), "b_g": make_bias(P),
+        "W_ih_o": make_weight(P, D), "W_hh_o": make_weight(P, P), "b_o": make_bias(P, 1.0),
     }
-    # Capa 2: input P=5, hidden Q=3
     W2 = {
         "W_ih_f": make_weight(Q, P), "W_hh_f": make_weight(Q, Q), "b_f": make_bias(Q, 1.0),
-        "W_ih_i": make_weight(Q, P), "W_hh_i": make_weight(Q, Q), "b_i": make_bias(Q),
-        "W_ih_g": make_weight(Q, P), "W_hh_g": make_weight(Q, Q), "b_g": make_bias(Q),
-        "W_ih_o": make_weight(Q, P), "W_hh_o": make_weight(Q, Q), "b_o": make_bias(Q),
+        "W_ih_i": make_weight(Q, P), "W_hh_i": make_weight(Q, Q), "b_i": make_bias(Q, 1.0),
+        "W_ih_g": make_weight(Q, P, scale=1.5), "W_hh_g": make_weight(Q, Q, scale=0.1), "b_g": make_bias(Q),
+        "W_ih_o": make_weight(Q, P), "W_hh_o": make_weight(Q, Q), "b_o": make_bias(Q, 1.0),
     }
     return W1, W2
 
@@ -559,6 +560,75 @@ def decoder_noattn_forward_lstm(h_T2_enc, c_T2_enc, W1, W2, W_c, W_out):
 # Decoder con atención Luong-general
 # ---------------------------------------------------------------------------
 
+def fit_luong_W_a(h_dec_seq, enc_h2_all, target_pairs, lr=0.5, n_iter=15000, seed=0, target_mag=15.0):
+    """
+    Ajusta W_a (Q×L) de Luong general por Adam para que los scores
+    `e_{t,i} = h_dec_t^T W_a h_enc_i` peakean en target_pairs.
+
+    A diferencia de Bahdanau: el score es BILINEAL (no tanh), por lo que
+    siempre puede amplificarse vía escalado de W_a. Multi-seed por robustez.
+    """
+    T_n = len(h_dec_seq)
+    N = len(enc_h2_all)
+    H_dec = np.array(h_dec_seq)            # (T, Q)
+    H_enc = np.array(enc_h2_all)           # (N, L)
+
+    # Target con margen amplio (bilinear → escala libre, no saturación)
+    S_target = np.full((T_n, N), -target_mag / (N - 1))
+    for t_idx, enc_idx in target_pairs:
+        S_target[t_idx, enc_idx] = target_mag
+
+    def run_fit(seed_):
+        rng = np.random.RandomState(seed_)
+        W_a_ = rng.randn(Q, L) * 1.0
+        m = np.zeros_like(W_a_); v_ = np.zeros_like(W_a_)
+        beta1, beta2, eps = 0.9, 0.999, 1e-8
+
+        best_loss = float("inf")
+        best = W_a_.copy()
+        for it in range(n_iter):
+            # S[t,i] = H_dec[t,:] @ W_a @ H_enc[i,:]
+            #       = (H_dec @ W_a) @ H_enc.T
+            K = H_dec @ W_a_                # (T, L)
+            S = K @ H_enc.T                 # (T, N)
+
+            diff = S - S_target
+            loss = float((diff ** 2).mean())
+            if loss < best_loss:
+                best_loss = loss
+                best = W_a_.copy()
+
+            dS = 2.0 * diff / (T_n * N)     # (T, N)
+            dK = dS @ H_enc                 # (T, L)
+            dW_a = H_dec.T @ dK             # (Q, L)
+
+            t_ = it + 1
+            m[:] = beta1 * m + (1 - beta1) * dW_a
+            v_[:] = beta2 * v_ + (1 - beta2) * (dW_a * dW_a)
+            m_hat = m / (1 - beta1 ** t_)
+            v_hat = v_ / (1 - beta2 ** t_)
+            W_a_ -= lr * m_hat / (np.sqrt(v_hat) + eps)
+
+        return best, best_loss
+
+    best_overall = None
+    best_loss = float("inf")
+    for sd in range(seed, seed + 4):
+        Wa, lo = run_fit(sd)
+        if lo < best_loss:
+            best_loss = lo
+            best_overall = Wa
+
+    # Diagnóstico
+    S = H_dec @ best_overall @ H_enc.T
+    achieved = sum(int(np.argmax(S[t]) == enc) for t, enc in target_pairs)
+    print(f"      [luong fit] loss={best_loss:.4f} aciertos={achieved}/{len(target_pairs)}")
+
+    return best_overall
+
+# Pares lingüísticos objetivo para Luong (mismo mapeo que Bahdanau)
+LUONG_TARGET_PAIRS = [(0, 0), (1, 1), (2, 5), (3, 6), (4, 3), (5, 4)]
+
 def attention_scores(h_dec_q, enc_h2_all, W_a):
     """
     h_dec_q: dim Q=3
@@ -671,13 +741,10 @@ def decoder_attn_forward_gru(h_T2_enc, enc_h2_all, W1, W2, W_c, W_a, W_combine, 
         h2_pre, _ = gru_step(h1_pre, h2_pre, W2)
         h_dec_states.append(h2_pre.copy())
 
-    # Pares con match lingüístico fuerte y mathematicamente alcanzables:
-    # t=0 (gen I)     → enc[0] Me      (pronombre personal)
-    # t=1 (gen loved) → enc[1] encantó (traducción directa)
-    # Los pasos 2-4 producen h_dec casi idénticos (coseno > 0.99),
-    # así que cualquier W_a dará el mismo ganador para los tres.
-    target_pairs = [(0, 0), (1, 1)]
-    W_a_tuned = make_interpretable_W_a(h_dec_states, enc_h2_all, target_pairs)
+    # Fit Adam multi-seed sobre 6 pares lingüísticos. Aunque h_dec en t=2..4 es
+    # casi idéntico (coseno > 0.99), W_a puede escalarse para amplificar las
+    # diferencias minúsculas (score bilineal, sin saturación).
+    W_a_tuned = r2(fit_luong_W_a(h_dec_states, enc_h2_all, LUONG_TARGET_PAIRS, seed=10))
 
     # Pasada 1: teacher forcing, recolectar h_tilde_seq
     h1 = context_vec.copy(); h2 = np.zeros(Q)
@@ -769,8 +836,7 @@ def decoder_attn_forward_lstm(h_T2_enc, c_T2_enc, enc_h2_all, W1, W2, W_c, W_a, 
         h2_pre, c2_pre, _ = lstm_step(h1_pre, h2_pre, c2_pre, W2)
         h_dec_states.append(h2_pre.copy())
 
-    target_pairs = [(0, 0), (1, 1)]
-    W_a_tuned = make_interpretable_W_a(h_dec_states, enc_h2_all, target_pairs)
+    W_a_tuned = r2(fit_luong_W_a(h_dec_states, enc_h2_all, LUONG_TARGET_PAIRS, seed=20))
 
     # Pasada 1: teacher forcing, recolectar h_tilde_seq
     h1 = context_vec.copy(); c1 = np.zeros(P)
@@ -846,6 +912,389 @@ def decoder_attn_forward_lstm(h_T2_enc, c_T2_enc, enc_h2_all, W1, W2, W_c, W_a, 
         f"LSTM decoder attn generó: {generated}\nEsperado: {TARGET_TRANSLATION}"
     )
     return context_info, timesteps, W_a_tuned, W_out_tuned
+
+# ---------------------------------------------------------------------------
+# Decoder con atención Bahdanau (aditiva, input-side)
+#
+# Diferencias clave vs Luong:
+#   - Score aditivo: e_i = v_a^T tanh(W_a h_dec_{t-1}^(2) + U_a h_enc_i^(2))
+#     Usa h_dec_PREVIO (antes del step), no el actual.
+#   - El contexto c_t se concatena con el embedding de input ANTES de entrar
+#     a decoder L1 → input dim cambia de D=4 a D+L=8.
+#   - Salida: softmax(W_out · h_t^(2)) directo, sin W_combine ni h_tilde.
+#   - Atención modifica la dinámica del decoder (a diferencia de Luong, que
+#     solo decora la salida).
+# ---------------------------------------------------------------------------
+
+def make_gru_weights_dec_bahdanau():
+    # Capa 1: input D+L=8, hidden P=5. Aplicamos el truco "gate-opening" del
+    # encoder L2 (b_z negativo + W_ih_n grande) para forzar que h_dec varíe
+    # fuertemente entre timesteps. Esto es crítico para Bahdanau: si h_dec_{t-1}
+    # es casi constante, los α no pueden diferir entre timesteps.
+    W1 = {
+        "W_ih_r": make_weight(P, D + L), "W_hh_r": make_weight(P, P), "b_r": make_bias(P),
+        "W_ih_z": make_weight(P, D + L), "W_hh_z": make_weight(P, P), "b_z": make_bias(P, -1.5),
+        "W_ih_n": make_weight(P, D + L, scale=1.5), "W_hh_n": make_weight(P, P, scale=0.1), "b_n": make_bias(P),
+    }
+    # Capa 2: input P=5, hidden Q=3. Mismo truco para que Q dim también varíe.
+    W2 = {
+        "W_ih_r": make_weight(Q, P), "W_hh_r": make_weight(Q, Q), "b_r": make_bias(Q),
+        "W_ih_z": make_weight(Q, P), "W_hh_z": make_weight(Q, Q), "b_z": make_bias(Q, -1.5),
+        "W_ih_n": make_weight(Q, P, scale=1.5), "W_hh_n": make_weight(Q, Q, scale=0.1), "b_n": make_bias(Q),
+    }
+    return W1, W2
+
+def make_lstm_weights_dec_bahdanau():
+    # Para LSTM el truco análogo: b_i grande (input gate abierta) + W_ih_g
+    # grande (candidate fuerte) → c_t cambia mucho cada timestep.
+    W1 = {
+        "W_ih_f": make_weight(P, D + L), "W_hh_f": make_weight(P, P), "b_f": make_bias(P, 1.0),
+        "W_ih_i": make_weight(P, D + L), "W_hh_i": make_weight(P, P), "b_i": make_bias(P, 1.0),
+        "W_ih_g": make_weight(P, D + L, scale=1.5), "W_hh_g": make_weight(P, P, scale=0.1), "b_g": make_bias(P),
+        "W_ih_o": make_weight(P, D + L), "W_hh_o": make_weight(P, P), "b_o": make_bias(P, 1.0),
+    }
+    W2 = {
+        "W_ih_f": make_weight(Q, P), "W_hh_f": make_weight(Q, Q), "b_f": make_bias(Q, 1.0),
+        "W_ih_i": make_weight(Q, P), "W_hh_i": make_weight(Q, Q), "b_i": make_bias(Q, 1.0),
+        "W_ih_g": make_weight(Q, P, scale=1.5), "W_hh_g": make_weight(Q, Q, scale=0.1), "b_g": make_bias(Q),
+        "W_ih_o": make_weight(Q, P), "W_hh_o": make_weight(Q, Q), "b_o": make_bias(Q, 1.0),
+    }
+    return W1, W2
+
+def make_bahdanau_attn_weights():
+    """Devuelve (W_a (A,Q), U_a (A,L), v_a (A,))."""
+    W_a = make_weight(A, Q)
+    U_a = make_weight(A, L)
+    v_a = r2((np.random.rand(A) * 2 - 1) * 0.8)
+    return W_a, U_a, v_a
+
+def bahdanau_scores(h_dec_prev, enc_h2_all, W_a, U_a, v_a):
+    """
+    h_dec_prev: dim Q=3 (estado del decoder L2 ANTES del step actual)
+    enc_h2_all: lista de 7 vectores dim L=4
+    W_a: (A,Q)=4×3, U_a: (A,L)=4×4, v_a: dim A=4
+    e_i = v_a^T tanh(W_a h_dec_prev + U_a h_enc_i)
+    """
+    Wh = W_a @ h_dec_prev          # (A,)
+    scores = np.zeros(len(enc_h2_all))
+    Ue_all = []
+    pre_all = []
+    post_all = []
+    for i, h_enc_i in enumerate(enc_h2_all):
+        Ue = U_a @ h_enc_i
+        pre = Wh + Ue
+        post = tanh(pre)
+        scores[i] = float(v_a @ post)
+        Ue_all.append(Ue)
+        pre_all.append(pre)
+        post_all.append(post)
+    detail = {
+        "W_a_h_dec": Wh.tolist(),
+        "U_a_h_enc": [u.tolist() for u in Ue_all],
+        "pre_tanh": [p.tolist() for p in pre_all],
+        "tanh": [p.tolist() for p in post_all],
+    }
+    return scores, detail
+
+def fit_bahdanau_attention(h_dec_seq, enc_h2_all, target_pairs, lr=0.15, n_iter=8000, seed=0):
+    """
+    Ajusta W_a (A×Q), U_a (A×L), v_a (A) por gradient descent (Adam) para que
+    los scores `e_{t,i} = v_a · tanh(W_a h_dec[t] + U_a h_enc[i])` matcheen
+    un patrón objetivo: alto en (t, target_enc[t]) y bajo en el resto.
+
+    Usa Adam para escapar de mesetas y tanh-saturation. Múltiples seeds para
+    robustez (pickea la mejor).
+    """
+    T_n = len(h_dec_seq)
+    N = len(enc_h2_all)
+    H_dec = np.array(h_dec_seq)            # (T, Q)
+    H_enc = np.array(enc_h2_all)           # (N, L)
+
+    # Score objetivo: pico fuerte, valle profundo → softmax peak ≈ 0.7-0.8
+    S_target = np.full((T_n, N), -3.0 / (N - 1))
+    for t_idx, enc_idx in target_pairs:
+        S_target[t_idx, enc_idx] = 3.0
+
+    def run_fit(seed_):
+        rng = np.random.RandomState(seed_)
+        # Init más agresivo para evitar región plana
+        W_a_ = rng.randn(A, Q) * 1.0
+        U_a_ = rng.randn(A, L) * 1.0
+        v_a_ = rng.randn(A) * 1.0
+
+        # Adam state
+        m_W = np.zeros_like(W_a_); v_W = np.zeros_like(W_a_)
+        m_U = np.zeros_like(U_a_); v_U = np.zeros_like(U_a_)
+        m_v = np.zeros_like(v_a_); v_v = np.zeros_like(v_a_)
+        beta1, beta2, eps = 0.9, 0.999, 1e-8
+
+        best_loss = float("inf")
+        best = (W_a_.copy(), U_a_.copy(), v_a_.copy())
+
+        for it in range(n_iter):
+            Wh = H_dec @ W_a_.T
+            Ue = H_enc @ U_a_.T
+            pre = Wh[:, None, :] + Ue[None, :, :]
+            post = np.tanh(pre)
+            S = post @ v_a_
+
+            diff = S - S_target
+            loss = float((diff ** 2).mean())
+            if loss < best_loss:
+                best_loss = loss
+                best = (W_a_.copy(), U_a_.copy(), v_a_.copy())
+
+            dS = 2.0 * diff / (T_n * N)
+            d_v_a = (post * dS[..., None]).sum(axis=(0, 1))
+            d_post = dS[..., None] * v_a_[None, None, :]
+            d_pre = d_post * (1.0 - post * post)
+            d_Wh = d_pre.sum(axis=1)
+            d_Ue = d_pre.sum(axis=0)
+            d_W_a = d_Wh.T @ H_dec
+            d_U_a = d_Ue.T @ H_enc
+
+            # Adam update
+            t_ = it + 1
+            for g, m, v_, x in [
+                (d_W_a, m_W, v_W, W_a_),
+                (d_U_a, m_U, v_U, U_a_),
+                (d_v_a, m_v, v_v, v_a_),
+            ]:
+                m[:] = beta1 * m + (1 - beta1) * g
+                v_[:] = beta2 * v_ + (1 - beta2) * (g * g)
+                m_hat = m / (1 - beta1 ** t_)
+                v_hat = v_ / (1 - beta2 ** t_)
+                x -= lr * m_hat / (np.sqrt(v_hat) + eps)
+
+        return best, best_loss
+
+    # Probamos varios seeds y nos quedamos con el mejor
+    best_overall = None
+    best_loss = float("inf")
+    for sd in range(seed, seed + 4):
+        (Wa, Ua, va), lo = run_fit(sd)
+        if lo < best_loss:
+            best_loss = lo
+            best_overall = (Wa, Ua, va)
+
+    W_a, U_a, v_a = best_overall
+
+    # Diagnóstico
+    Wh = H_dec @ W_a.T
+    Ue = H_enc @ U_a.T
+    pre = Wh[:, None, :] + Ue[None, :, :]
+    post = np.tanh(pre)
+    S = post @ v_a
+    achieved = sum(int(np.argmax(S[t]) == enc) for t, enc in target_pairs)
+    print(f"      [bahdanau fit] loss={best_loss:.4f} aciertos={achieved}/{len(target_pairs)}")
+
+    return W_a, U_a, v_a
+
+# Pares lingüísticos objetivo para Bahdanau (0-indexed sobre h_dec):
+# t=0 (gen I)      → Me      (enc 0)
+# t=1 (gen loved)  → encantó (enc 1)
+# t=2 (gen this)   → este    (enc 5)
+# t=3 (gen place's)→ lugar   (enc 6)
+# t=4 (gen pizza)  → pizza   (enc 3)
+# t=5 (gen <END>)  → de      (enc 4) — convención
+BAHDANAU_TARGET_PAIRS = [(0, 0), (1, 1), (2, 5), (3, 6), (4, 3), (5, 4)]
+
+def decoder_bahdanau_forward_gru(h_T2_enc, enc_h2_all, W1, W2, W_c, W_a, U_a, v_a, W_out):
+    h1_init = W_c @ h_T2_enc
+    context_info = {
+        "W_c": W_c.tolist(),
+        "h_T_layer2": h_T2_enc.tolist(),
+        "h_0_decoder_layer1": h1_init.tolist(),
+    }
+
+    enc_arr = np.array(enc_h2_all)
+    input_tokens = ["<START>"] + TARGET_TRANSLATION[:-1]
+
+    def run_forward(W_a_, U_a_, v_a_):
+        """Run decoder once with given attention weights. Returns h2_seq."""
+        h1_ = h1_init.copy(); h2_ = np.zeros(Q)
+        h2_seq_ = []
+        for tok in input_tokens:
+            emb_t_ = emb(tok)
+            scores_, _ = bahdanau_scores(h2_, enc_h2_all, W_a_, U_a_, v_a_)
+            alphas_ = softmax(scores_)
+            c_t_ = enc_arr.T @ alphas_
+            x_in_ = np.concatenate([emb_t_, c_t_])
+            h1_, _ = gru_step(x_in_, h1_, W1)
+            h2_, _ = gru_step(h1_, h2_, W2)
+            h2_seq_.append(h2_.copy())
+        return h2_seq_
+
+    # Iteración fixed-point: alterna entre correr forward y ajustar atención.
+    # 2 rondas suelen alcanzar — al cambiar α cambia c_t cambia h_dec.
+    for it in range(2):
+        h2_seq = run_forward(W_a, U_a, v_a)
+        # h_dec_{t-1} = [zeros, h2_seq[0], h2_seq[1], ...] — el query es el ANTERIOR
+        h_dec_prev_seq = [np.zeros(Q)] + h2_seq[:-1]
+        W_a, U_a, v_a = fit_bahdanau_attention(h_dec_prev_seq, enc_h2_all, BAHDANAU_TARGET_PAIRS)
+
+    # Redondear pesos finales para legibilidad
+    W_a = r2(W_a); U_a = r2(U_a); v_a = r2(v_a)
+
+    # Pasada final con pesos redondeados
+    h2_seq = run_forward(W_a, U_a, v_a)
+    W_out_tuned = tune_W_out(W_out, h2_seq, TARGET_TRANSLATION)
+
+    # Pasada 2: teacher forcing, recolectar detalles completos
+    h1 = h1_init.copy(); h2 = np.zeros(Q)
+    timesteps = []
+    for step, current_tok in enumerate(input_tokens):
+        emb_t = emb(current_tok)
+        h1_prev, h2_prev = h1.copy(), h2.copy()
+
+        scores, attn_detail = bahdanau_scores(h2_prev, enc_h2_all, W_a, U_a, v_a)
+        alphas = softmax(scores)
+        c_t = enc_arr.T @ alphas
+        x_in = np.concatenate([emb_t, c_t])
+
+        h1, g1 = gru_step(x_in, h1_prev, W1)
+        h2, g2 = gru_step(h1, h2_prev, W2)
+
+        logits = W_out_tuned @ h2
+        probs = softmax(logits)
+        pred_tok = VOCAB[int(np.argmax(probs))]
+
+        timesteps.append({
+            "t": step + 1,
+            "input_token": current_tok,
+            "input_embedding": emb_t.tolist(),
+            "attention": {
+                "tipo": "bahdanau",
+                "h_dec_prev": h2_prev.tolist(),
+                "scores": scores.tolist(),
+                "alphas": alphas.tolist(),
+                "contexto": c_t.tolist(),
+                "detail": attn_detail,
+            },
+            "input_concat": x_in.tolist(),
+            "layer1": {
+                "h_prev": h1_prev.tolist(),
+                "x_t": x_in.tolist(),
+                "gates": g1,
+                "h_t": h1.tolist(),
+            },
+            "layer2": {
+                "h_prev": h2_prev.tolist(),
+                "x_t": h1.tolist(),
+                "gates": g2,
+                "h_t": h2.tolist(),
+            },
+            "softmax": {
+                "logits": logits.tolist(),
+                "probas": probs.tolist(),
+                "argmax": pred_tok,
+            },
+        })
+
+    generated = [ts["softmax"]["argmax"] for ts in timesteps]
+    assert generated == TARGET_TRANSLATION, (
+        f"GRU decoder Bahdanau generó: {generated}\nEsperado: {TARGET_TRANSLATION}"
+    )
+    return context_info, timesteps, W_out_tuned, W_a, U_a, v_a
+
+def decoder_bahdanau_forward_lstm(h_T2_enc, c_T2_enc, enc_h2_all, W1, W2, W_c, W_a, U_a, v_a, W_out):
+    h1_init = W_c @ h_T2_enc
+    context_info = {
+        "W_c": W_c.tolist(),
+        "h_T_layer2": h_T2_enc.tolist(),
+        "h_0_decoder_layer1": h1_init.tolist(),
+    }
+
+    enc_arr = np.array(enc_h2_all)
+    input_tokens = ["<START>"] + TARGET_TRANSLATION[:-1]
+
+    def run_forward(W_a_, U_a_, v_a_):
+        h1_ = h1_init.copy(); c1_ = np.zeros(P)
+        h2_ = np.zeros(Q); c2_ = np.zeros(Q)
+        h2_seq_ = []
+        for tok in input_tokens:
+            emb_t_ = emb(tok)
+            scores_, _ = bahdanau_scores(h2_, enc_h2_all, W_a_, U_a_, v_a_)
+            alphas_ = softmax(scores_)
+            c_t_ = enc_arr.T @ alphas_
+            x_in_ = np.concatenate([emb_t_, c_t_])
+            h1_, c1_, _ = lstm_step(x_in_, h1_, c1_, W1)
+            h2_, c2_, _ = lstm_step(h1_, h2_, c2_, W2)
+            h2_seq_.append(h2_.copy())
+        return h2_seq_
+
+    for it in range(2):
+        h2_seq = run_forward(W_a, U_a, v_a)
+        h_dec_prev_seq = [np.zeros(Q)] + h2_seq[:-1]
+        W_a, U_a, v_a = fit_bahdanau_attention(h_dec_prev_seq, enc_h2_all, BAHDANAU_TARGET_PAIRS)
+
+    W_a = r2(W_a); U_a = r2(U_a); v_a = r2(v_a)
+
+    h2_seq = run_forward(W_a, U_a, v_a)
+    W_out_tuned = tune_W_out(W_out, h2_seq, TARGET_TRANSLATION)
+
+    # Pasada 2
+    h1 = h1_init.copy(); c1 = np.zeros(P)
+    h2 = np.zeros(Q); c2 = np.zeros(Q)
+    timesteps = []
+    for step, current_tok in enumerate(input_tokens):
+        emb_t = emb(current_tok)
+        h1_prev, c1_prev = h1.copy(), c1.copy()
+        h2_prev, c2_prev = h2.copy(), c2.copy()
+
+        scores, attn_detail = bahdanau_scores(h2_prev, enc_h2_all, W_a, U_a, v_a)
+        alphas = softmax(scores)
+        c_t = enc_arr.T @ alphas
+        x_in = np.concatenate([emb_t, c_t])
+
+        h1, c1, g1 = lstm_step(x_in, h1_prev, c1_prev, W1)
+        h2, c2, g2 = lstm_step(h1, h2_prev, c2_prev, W2)
+
+        logits = W_out_tuned @ h2
+        probs = softmax(logits)
+        pred_tok = VOCAB[int(np.argmax(probs))]
+
+        timesteps.append({
+            "t": step + 1,
+            "input_token": current_tok,
+            "input_embedding": emb_t.tolist(),
+            "attention": {
+                "tipo": "bahdanau",
+                "h_dec_prev": h2_prev.tolist(),
+                "scores": scores.tolist(),
+                "alphas": alphas.tolist(),
+                "contexto": c_t.tolist(),
+                "detail": attn_detail,
+            },
+            "input_concat": x_in.tolist(),
+            "layer1": {
+                "h_prev": h1_prev.tolist(),
+                "c_prev": c1_prev.tolist(),
+                "x_t": x_in.tolist(),
+                "gates": g1,
+                "h_t": h1.tolist(),
+                "c_t": c1.tolist(),
+            },
+            "layer2": {
+                "h_prev": h2_prev.tolist(),
+                "c_prev": c2_prev.tolist(),
+                "x_t": h1.tolist(),
+                "gates": g2,
+                "h_t": h2.tolist(),
+                "c_t": c2.tolist(),
+            },
+            "softmax": {
+                "logits": logits.tolist(),
+                "probas": probs.tolist(),
+                "argmax": pred_tok,
+            },
+        })
+
+    generated = [ts["softmax"]["argmax"] for ts in timesteps]
+    assert generated == TARGET_TRANSLATION, (
+        f"LSTM decoder Bahdanau generó: {generated}\nEsperado: {TARGET_TRANSLATION}"
+    )
+    return context_info, timesteps, W_out_tuned, W_a, U_a, v_a
 
 # ---------------------------------------------------------------------------
 # Validación numérica spot-check
@@ -945,8 +1394,30 @@ def main():
         gru_dec_W1, gru_dec_W2, gru_W_c,
         gru_W_a, gru_W_combine, gru_W_out_attn_init
     )
-    print(f"  ✓ GRU translation attn:   {[ts['softmax']['argmax'] for ts in gru_dec_ts_attn]}")
+    print(f"  ✓ GRU translation attn (Luong):    {[ts['softmax']['argmax'] for ts in gru_dec_ts_attn]}")
     for t, ts in enumerate(gru_dec_ts_attn):
+        top_enc = int(np.argmax(ts["attention"]["alphas"]))
+        print(f"      t={t+1} ({ts['input_token']:8s}) → pico atención en enc[{top_enc+1}]={ENCODER_TOKENS[top_enc]}"
+              f"  α_max={ts['attention']['alphas'][top_enc]:.3f}")
+
+    # ================================================================
+    # GRU Translation con atención Bahdanau (aditiva, input-side)
+    # ================================================================
+    np.random.seed(74)
+    gru_dec_W1_bah, gru_dec_W2_bah = make_gru_weights_dec_bahdanau()
+    np.random.seed(75)
+    gru_W_a_bah, gru_U_a_bah, gru_v_a_bah = make_bahdanau_attn_weights()
+    np.random.seed(76)
+    gru_W_out_bah_init = make_decoder_out_weights()
+
+    gru_ctx_bah, gru_dec_ts_bah, gru_W_out_bah, gru_W_a_bah, gru_U_a_bah, gru_v_a_bah = decoder_bahdanau_forward_gru(
+        gru_h2_T, gru_enc_h2_all,
+        gru_dec_W1_bah, gru_dec_W2_bah, gru_W_c,
+        gru_W_a_bah, gru_U_a_bah, gru_v_a_bah,
+        gru_W_out_bah_init,
+    )
+    print(f"  ✓ GRU translation attn (Bahdanau): {[ts['softmax']['argmax'] for ts in gru_dec_ts_bah]}")
+    for t, ts in enumerate(gru_dec_ts_bah):
         top_enc = int(np.argmax(ts["attention"]["alphas"]))
         print(f"      t={t+1} ({ts['input_token']:8s}) → pico atención en enc[{top_enc+1}]={ENCODER_TOKENS[top_enc]}"
               f"  α_max={ts['attention']['alphas'][top_enc]:.3f}")
@@ -1009,7 +1480,29 @@ def main():
         lstm_dec_W1, lstm_dec_W2, lstm_W_c,
         lstm_W_a, lstm_W_combine, lstm_W_out_attn_init
     )
-    print(f"  ✓ LSTM translation attn:   {[ts['softmax']['argmax'] for ts in lstm_dec_ts_attn]}")
+    print(f"  ✓ LSTM translation attn (Luong):    {[ts['softmax']['argmax'] for ts in lstm_dec_ts_attn]}")
+
+    # ================================================================
+    # LSTM Translation con atención Bahdanau
+    # ================================================================
+    np.random.seed(114)
+    lstm_dec_W1_bah, lstm_dec_W2_bah = make_lstm_weights_dec_bahdanau()
+    np.random.seed(115)
+    lstm_W_a_bah, lstm_U_a_bah, lstm_v_a_bah = make_bahdanau_attn_weights()
+    np.random.seed(116)
+    lstm_W_out_bah_init = make_decoder_out_weights()
+
+    lstm_ctx_bah, lstm_dec_ts_bah, lstm_W_out_bah, lstm_W_a_bah, lstm_U_a_bah, lstm_v_a_bah = decoder_bahdanau_forward_lstm(
+        lstm_h2_T, lstm_c2_T, lstm_enc_h2_all,
+        lstm_dec_W1_bah, lstm_dec_W2_bah, lstm_W_c,
+        lstm_W_a_bah, lstm_U_a_bah, lstm_v_a_bah,
+        lstm_W_out_bah_init,
+    )
+    print(f"  ✓ LSTM translation attn (Bahdanau): {[ts['softmax']['argmax'] for ts in lstm_dec_ts_bah]}")
+    for t, ts in enumerate(lstm_dec_ts_bah):
+        top_enc = int(np.argmax(ts["attention"]["alphas"]))
+        print(f"      t={t+1} ({ts['input_token']:8s}) → pico atención en enc[{top_enc+1}]={ENCODER_TOKENS[top_enc]}"
+              f"  α_max={ts['attention']['alphas'][top_enc]:.3f}")
 
     # ================================================================
     # Ensamblar JSON
@@ -1095,6 +1588,25 @@ def main():
                     "timesteps": gru_dec_ts_attn,
                 },
             },
+            "GRU_translation_attn_bahdanau": {
+                "encoder": {
+                    "weights": enc_weights_gru(),
+                    "timesteps": gru_enc_ts,
+                    "h2_all": [h.tolist() for h in gru_enc_h2_all],
+                },
+                "context": gru_ctx_bah,
+                "decoder": {
+                    "weights": {
+                        "layer1": weights_to_dict_gru(gru_dec_W1_bah),
+                        "layer2": weights_to_dict_gru(gru_dec_W2_bah),
+                    },
+                    "W_a": gru_W_a_bah.tolist(),
+                    "U_a": gru_U_a_bah.tolist(),
+                    "v_a": gru_v_a_bah.tolist(),
+                    "W_out": gru_W_out_bah.tolist(),
+                    "timesteps": gru_dec_ts_bah,
+                },
+            },
             "LSTM_translation_noattn": {
                 "encoder": {
                     "weights": enc_weights_lstm(),
@@ -1127,6 +1639,25 @@ def main():
                     "W_combine": lstm_W_combine.tolist(),
                     "W_out": lstm_W_out_attn.tolist(),
                     "timesteps": lstm_dec_ts_attn,
+                },
+            },
+            "LSTM_translation_attn_bahdanau": {
+                "encoder": {
+                    "weights": enc_weights_lstm(),
+                    "timesteps": lstm_enc_ts,
+                    "h2_all": [h.tolist() for h in lstm_enc_h2_all],
+                },
+                "context": lstm_ctx_bah,
+                "decoder": {
+                    "weights": {
+                        "layer1": weights_to_dict_lstm(lstm_dec_W1_bah),
+                        "layer2": weights_to_dict_lstm(lstm_dec_W2_bah),
+                    },
+                    "W_a": lstm_W_a_bah.tolist(),
+                    "U_a": lstm_U_a_bah.tolist(),
+                    "v_a": lstm_v_a_bah.tolist(),
+                    "W_out": lstm_W_out_bah.tolist(),
+                    "timesteps": lstm_dec_ts_bah,
                 },
             },
         }

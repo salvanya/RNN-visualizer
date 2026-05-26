@@ -165,11 +165,35 @@ export interface SoftmaxOutput {
   argmax: string;
 }
 
-export interface AttentionOutput {
+export interface AttentionOutputLuong {
   scores: number[];
   alphas: number[];
   contexto: number[];
   h_tilde: number[];
+}
+
+export interface BahdanauAttentionDetail {
+  W_a_h_dec: number[];
+  U_a_h_enc: number[][];
+  pre_tanh: number[][];
+  tanh: number[][];
+}
+
+export interface AttentionOutputBahdanau {
+  tipo: "bahdanau";
+  h_dec_prev: number[];
+  scores: number[];
+  alphas: number[];
+  contexto: number[];
+  detail: BahdanauAttentionDetail;
+}
+
+export type AttentionOutput = AttentionOutputLuong | AttentionOutputBahdanau;
+
+export function isBahdanauAttention(
+  a: AttentionOutput
+): a is AttentionOutputBahdanau {
+  return "tipo" in a && a.tipo === "bahdanau";
 }
 
 export interface DecoderTimestepGruNoAttn {
@@ -185,6 +209,8 @@ export interface DecoderTimestepGruAttn {
   t: number;
   input_token: string;
   input_embedding: number[];
+  // input_concat solo existe en Bahdanau: [embedding ; c_t], dim D+L
+  input_concat?: number[];
   layer1: EncoderLayerStateGru;
   layer2: EncoderLayerStateGru;
   attention: AttentionOutput;
@@ -204,6 +230,7 @@ export interface DecoderTimestepLstmAttn {
   t: number;
   input_token: string;
   input_embedding: number[];
+  input_concat?: number[];
   layer1: EncoderLayerStateLstm;
   layer2: EncoderLayerStateLstm;
   attention: AttentionOutput;
@@ -234,8 +261,12 @@ export interface DecoderScenario {
     layer2: GruLayerWeights | LstmLayerWeights;
   };
   W_out: number[][];
+  // Luong: W_a (Q×L), W_combine (Q × (Q+L))
   W_a?: number[][];
   W_combine?: number[][];
+  // Bahdanau: W_a (A×Q), U_a (A×L), v_a (A)
+  U_a?: number[][];
+  v_a?: number[];
   timesteps: DecoderTimestep[];
 }
 
@@ -257,8 +288,10 @@ export interface Scenarios {
   LSTM_sentiment: SentimentScenario;
   GRU_translation_noattn: TranslationScenario;
   GRU_translation_attn: TranslationScenario;
+  GRU_translation_attn_bahdanau: TranslationScenario;
   LSTM_translation_noattn: TranslationScenario;
   LSTM_translation_attn: TranslationScenario;
+  LSTM_translation_attn_bahdanau: TranslationScenario;
 }
 
 export interface RNNData {

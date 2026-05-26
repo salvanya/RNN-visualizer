@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { useStore } from "../state/store";
+import { Play, Pause, Square } from "lucide-react";
+import { useStore, type Velocidad } from "../state/store";
 import { autoAdvanceInterval } from "../utils/timing";
 
 // Timestep encoding:
@@ -28,7 +29,7 @@ function buildSteps(isTranslation: boolean): StepDef[] {
 }
 
 export default function TimestepBar() {
-  const { modo, timestep, setTimestep, playState, avanzarTimestep, velocidad } = useStore();
+  const { modo, timestep, setTimestep, playState, setPlayState, avanzarTimestep, velocidad, setVelocidad } = useStore();
   const isTranslation = modo === "translation";
   const steps = buildSteps(isTranslation);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -120,6 +121,52 @@ export default function TimestepBar() {
         }
       }}
     >
+      {/* Playback + velocidad — stopPropagation para no interferir con drag-scrubbing */}
+      <div
+        className="flex items-center gap-1 pr-3 mr-2 border-r border-gray-700 shrink-0"
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        {playState !== "playing" ? (
+          <button
+            onClick={() => setPlayState("playing")}
+            className="p-1.5 rounded bg-gray-700 hover:bg-green-700 transition-colors"
+            title="Reproducir (Espacio)"
+          >
+            <Play size={14} />
+          </button>
+        ) : (
+          <button
+            onClick={() => setPlayState("paused")}
+            className="p-1.5 rounded bg-green-700 hover:bg-green-600 transition-colors"
+            title="Pausar (Espacio)"
+          >
+            <Pause size={14} />
+          </button>
+        )}
+        <button
+          onClick={() => setPlayState("stopped")}
+          className="p-1.5 rounded bg-gray-700 hover:bg-red-700 transition-colors"
+          title="Detener"
+        >
+          <Square size={14} />
+        </button>
+        <div className="flex items-center gap-1 ml-2">
+          {([0.5, 1, 2] as Velocidad[]).map((v) => (
+            <button
+              key={v}
+              onClick={() => setVelocidad(v)}
+              className={`px-2 py-1 rounded text-[11px] font-mono transition-colors ${
+                velocidad === v
+                  ? "bg-gray-500 text-white"
+                  : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+              }`}
+            >
+              {v}x
+            </button>
+          ))}
+        </div>
+      </div>
+
       {steps.map((step) => {
         const active = step.index === timestep;
 

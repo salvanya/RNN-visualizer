@@ -1,7 +1,14 @@
 import rawData from './data.json';
 import type { RNNData, EncoderTimestep, DecoderTimestep, TranslationScenario } from './types';
+import type { Atencion } from '../state/store';
 
 export const appData = rawData as unknown as RNNData;
+
+function attnSuffix(atencion: Atencion): string {
+  if (atencion === "none") return "noattn";
+  if (atencion === "bahdanau") return "attn_bahdanau";
+  return "attn"; // luong
+}
 
 export function getEncoderTimesteps(
   arquitectura: 'GRU' | 'LSTM',
@@ -16,15 +23,15 @@ export function getEncoderTimesteps(
 
 export function getTranslationScenario(
   arquitectura: 'GRU' | 'LSTM',
-  atencion: boolean
+  atencion: Atencion
 ): TranslationScenario {
-  const key = `${arquitectura}_translation_${atencion ? 'attn' : 'noattn'}`;
+  const key = `${arquitectura}_translation_${attnSuffix(atencion)}`;
   return (appData.scenarios as unknown as Record<string, TranslationScenario>)[key];
 }
 
 export function getDecoderTimesteps(
   arquitectura: 'GRU' | 'LSTM',
-  atencion: boolean
+  atencion: Atencion
 ): DecoderTimestep[] {
   return getTranslationScenario(arquitectura, atencion).decoder.timesteps;
 }
