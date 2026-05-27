@@ -40,7 +40,7 @@ export default function Encoder() {
   return (
     <div className="flex flex-col gap-4 py-4 px-3">
       <EdgeLegend showC={isLstm} />
-      <div className="overflow-x-auto overflow-y-visible pt-3">
+      <div className="overflow-x-auto overflow-y-visible pt-3 app-scrollbar">
       <LayerStack
         side="enc"
         accentColor="#60a5fa"

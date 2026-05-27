@@ -60,7 +60,7 @@ export default function Decoder() {
       {/* Bahdanau: atención ARRIBA del decoder (input-side) */}
       {isBahdanau && attentionBlock}
 
-      <div className="overflow-x-auto overflow-y-visible py-4 px-3 pt-7">
+      <div className="overflow-x-auto overflow-y-visible py-4 px-3 pt-7 app-scrollbar-dec">
         <LayerStack
           side="dec"
           accentColor="#fb923c"
